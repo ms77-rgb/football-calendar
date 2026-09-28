@@ -22,6 +22,7 @@ export type SpielerPlusEventReference = {
 
 export type SpielerPlusConnectorOptions = {
   cookieHeader: string;
+  userIds?: string[];
   timeZone?: string;
   fetchImpl?: typeof fetch;
   maxEvents?: number;
@@ -66,6 +67,100 @@ function sanitizeCookieHeader(value: string): string {
   }
 
   return trimmed.replace(/^cookie:\s*/i, "");
+}
+
+function mergeSetCookiesIntoCookieHeader(
+  cookieHeader: string,
+  setCookieValues: string[]
+): string {
+  const cookies = new Map<string, string>();
+
+  for (const part of cookieHeader.split(";")) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const separator = trimmed.indexOf("=");
+    if (separator <= 0) continue;
+    cookies.set(trimmed.slice(0, separator), trimmed.slice(separator + 1));
+  }
+
+  for (const setCookie of setCookieValues) {
+    const firstPart = setCookie.split(";", 1)[0]?.trim();
+    if (!firstPart) continue;
+    const separator = firstPart.indexOf("=");
+    if (separator <= 0) continue;
+
+    const name = firstPart.slice(0, separator);
+    const value = firstPart.slice(separator + 1);
+
+    if (value) {
+      cookies.set(name, value);
+    } else {
+      cookies.delete(name);
+    }
+  }
+
+  return [...cookies.entries()]
+    .map(([name, value]) => `${name}=${value}`)
+    .join("; ");
+}
+
+function getSetCookieValues(headers: Headers): string[] {
+  const extended = headers as Headers & {
+    getSetCookie?: () => string[];
+  };
+
+  const values = extended.getSetCookie?.();
+  if (values?.length) return values;
+
+  const combined = headers.get("set-cookie");
+  if (!combined) return [];
+
+  return combined.split(/,(?=\s*[^;,\s]+=)/g).map((value) => value.trim());
+}
+
+async function switchSpielerPlusUser(options: {
+  userId: string;
+  cookie: string;
+  fetchImpl: typeof fetch;
+}): Promise<string> {
+  if (!/^\d+$/.test(options.userId)) {
+    throw new Error("Ungültige SpielerPlus-Nutzer-ID.");
+  }
+
+  const url = assertAllowedSpielerPlusUrl(
+    `https://www.spielerplus.de/site/switch-user?id=${encodeURIComponent(options.userId)}`
+  );
+
+  const response = await options.fetchImpl(url.toString(), {
+    method: "GET",
+    headers: {
+      accept: "text/html,application/xhtml+xml",
+      cookie: options.cookie,
+      "user-agent":
+        "football-calendar/0.1 SpielerPlus connector (+https://github.com/ms77-rgb/football-calendar)"
+    },
+    redirect: "manual",
+    cache: "no-store"
+  });
+
+  if (response.status !== 200 && (response.status < 300 || response.status >= 400)) {
+    throw new Error(
+      `SpielerPlus Nutzerwechsel lieferte HTTP ${response.status}.`
+    );
+  }
+
+  const updatedCookie = mergeSetCookiesIntoCookieHeader(
+    options.cookie,
+    getSetCookieValues(response.headers)
+  );
+
+  if (updatedCookie === options.cookie) {
+    throw new Error(
+      "SpielerPlus Nutzerwechsel hat keinen aktualisierten Sitzungs-Cookie geliefert."
+    );
+  }
+
+  return updatedCookie;
 }
 
 async function fetchWithSafeRedirects(
@@ -481,24 +576,31 @@ export class SpielerPlusConnector implements CalendarConnector {
   readonly source = "spielerplus" as const;
 
   private readonly cookie: string;
+  private readonly userIds: string[];
   private readonly timeZone: string;
   private readonly fetchImpl: typeof fetch;
   private readonly maxEvents: number;
 
   constructor(options: SpielerPlusConnectorOptions) {
     this.cookie = sanitizeCookieHeader(options.cookieHeader);
+    this.userIds = (options.userIds ?? [])
+      .map((value) => value.trim())
+      .filter(Boolean);
     this.timeZone = options.timeZone ?? DEFAULT_TIME_ZONE;
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.maxEvents = Math.max(1, Math.min(options.maxEvents ?? 100, 200));
   }
 
-  async fetchEvents(context?: ConnectorContext): Promise<CalendarEvent[]> {
+  private async fetchEventsForCookie(
+    cookie: string,
+    context?: ConnectorContext
+  ): Promise<CalendarEvent[]> {
     const indexUrl = assertAllowedSpielerPlusUrl(
       "https://www.spielerplus.de/events/index"
     );
     const indexResponse = await fetchWithSafeRedirects(
       indexUrl,
-      this.cookie,
+      cookie,
       this.fetchImpl
     );
 
@@ -535,7 +637,7 @@ export class SpielerPlusConnector implements CalendarConnector {
     ) {
       const batch = await fetchSpielerPlusAjaxEventsPage({
         offset,
-        cookie: this.cookie,
+        cookie,
         fetchImpl: this.fetchImpl
       });
 
@@ -567,7 +669,7 @@ export class SpielerPlusConnector implements CalendarConnector {
       references.map(async (reference) => {
         const response = await fetchWithSafeRedirects(
           assertAllowedSpielerPlusUrl(reference.url),
-          this.cookie,
+          cookie,
           this.fetchImpl
         );
 
@@ -590,6 +692,27 @@ export class SpielerPlusConnector implements CalendarConnector {
         });
       })
     );
+
+    return events;
+  }
+
+  async fetchEvents(context?: ConnectorContext): Promise<CalendarEvent[]> {
+    if (this.userIds.length === 0) {
+      return this.fetchEventsForCookie(this.cookie, context);
+    }
+
+    let cookie = this.cookie;
+    const events: CalendarEvent[] = [];
+
+    for (const userId of this.userIds) {
+      cookie = await switchSpielerPlusUser({
+        userId,
+        cookie,
+        fetchImpl: this.fetchImpl
+      });
+
+      events.push(...(await this.fetchEventsForCookie(cookie, context)));
+    }
 
     return events;
   }
