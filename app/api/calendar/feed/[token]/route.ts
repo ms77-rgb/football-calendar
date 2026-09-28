@@ -2,6 +2,11 @@ import { buildIcsCalendar } from "@/lib/calendar/ics";
 import { normalizeEvents, preferFussballDeDuplicateMatches } from "@/lib/calendar/normalize";
 import { FussballDeConnector, extractFussballDeTeamId } from "@/lib/connectors/fussball-de";
 import { SpielerPlusConnector } from "@/lib/connectors/spielerplus";
+import {
+  isPersistentSpielerPlusSessionConfigured,
+  loadPersistedSpielerPlusCookie,
+  savePersistedSpielerPlusCookie
+} from "@/lib/session/spielerplus-store";
 
 type TeamSelection = {
   reference: string;
@@ -37,7 +42,7 @@ export async function GET(
   context: { params: Promise<{ token: string }> }
 ) {
   const configuredToken = process.env.CALENDAR_FEED_TOKEN;
-  const spielerPlusCookie = process.env.SPIELERPLUS_COOKIE;
+  const configuredSpielerPlusCookie = process.env.SPIELERPLUS_COOKIE;
   const spielerPlusUserIds = (process.env.SPIELERPLUS_USER_IDS ?? "")
     .split(",")
     .map((value) => value.trim())
@@ -57,6 +62,11 @@ export async function GET(
       })
       .filter(([userId, label]) => Boolean(userId) && Boolean(label))
   );
+
+  const persistedSpielerPlusCookie =
+    await loadPersistedSpielerPlusCookie().catch(() => null);
+  const spielerPlusCookie =
+    persistedSpielerPlusCookie ?? configuredSpielerPlusCookie;
 
   if (!configuredToken || !spielerPlusCookie) {
     return Response.json(
@@ -117,6 +127,9 @@ export async function GET(
       cookieHeader: spielerPlusCookie,
       userIds: spielerPlusUserIds,
       userLabels: spielerPlusUserLabels,
+      onCookieUpdate: isPersistentSpielerPlusSessionConfigured()
+        ? savePersistedSpielerPlusCookie
+        : undefined,
       maxEvents: 50
     }).fetchEvents();
 
@@ -141,6 +154,9 @@ export async function GET(
           spielerPlusCount: spielerPlusEvents.length,
           totalCount: events.length,
           suppressedSpielerPlusDuplicates,
+          spielerPlusSessionSource: persistedSpielerPlusCookie ? "blob" : "env",
+          spielerPlusSessionPersistence:
+            isPersistentSpielerPlusSessionConfigured() ? "blob" : "disabled",
           spielerPlusSamples: spielerPlusEvents.slice(0, 10).map((event) => ({
             id: event.sourceEventId,
             title: event.title,
