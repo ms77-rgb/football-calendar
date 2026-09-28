@@ -26,6 +26,7 @@ Implemented:
 - real FUSSBALL.DE import
 - SpielerPlus HTML connector for authenticated event-list and detail pages
 - developer endpoint at `/api/spielerplus/events` to validate parsed trainings/games
+- automatic short-lived SpielerPlus token refresh via `GET /auth/refresh-token`
 
 Not yet implemented:
 
@@ -33,7 +34,7 @@ Not yet implemented:
 - user accounts
 - multi-user persistent feed configuration
 - background synchronization
-- automatic SpielerPlus session renewal
+- durable persistence of rotated SpielerPlus refresh/session cookies
 
 ## Local development
 
@@ -105,3 +106,17 @@ If one SpielerPlus login contains multiple selectable users/profiles, set
 switches users through `/site/switch-user?id=...`, carries forward the
 `Set-Cookie` response, loads all event pages for each user, and combines the
 events before ICS generation.
+
+
+### SpielerPlus token refresh
+
+Before loading events, the connector calls `GET /auth/refresh-token` with the
+server-side SpielerPlus cookie jar and merges every returned `Set-Cookie`
+value into the in-memory session used for that feed request. The same refresh is
+performed after switching SpielerPlus users.
+
+This removes the need to manually replace short-lived `_identity_token`
+cookies. The current MVP still bootstraps from `SPIELERPLUS_COOKIE` on every
+serverless invocation. If SpielerPlus rotates or eventually expires the
+long-lived refresh/session cookie, a persistent encrypted store is required to
+carry the rotated cookie jar across deployments and cold starts.
