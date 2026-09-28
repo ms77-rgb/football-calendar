@@ -90,6 +90,7 @@ Required server-side environment variables:
 CALENDAR_FEED_TOKEN=<long random secret>
 SPIELERPLUS_COOKIE=<current SpielerPlus web session cookie>
 SPIELERPLUS_USER_IDS=<comma-separated SpielerPlus user ids, optional>
+SPIELERPLUS_USER_LABELS=<optional id:display-name pairs, comma-separated>
 ```
 
 Neither secret belongs in Git, logs, or screenshots. The feed token is intended
@@ -106,6 +107,11 @@ If one SpielerPlus login contains multiple selectable users/profiles, set
 switches users through `/site/switch-user?id=...`, carries forward the
 `Set-Cookie` response, loads all event pages for each user, and combines the
 events before ICS generation.
+
+Optional display names can be configured through `SPIELERPLUS_USER_LABELS`,
+for example `12345678:Max,87654321:Paul`. Matching SpielerPlus trainings are
+then titled `Training – Max` / `Training – Paul` and the label is also added
+to the description.
 
 
 ### SpielerPlus token refresh

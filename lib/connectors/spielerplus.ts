@@ -23,6 +23,7 @@ export type SpielerPlusEventReference = {
 export type SpielerPlusConnectorOptions = {
   cookieHeader: string;
   userIds?: string[];
+  userLabels?: Record<string, string>;
   timeZone?: string;
   fetchImpl?: typeof fetch;
   maxEvents?: number;
@@ -616,6 +617,7 @@ export class SpielerPlusConnector implements CalendarConnector {
 
   private readonly cookie: string;
   private readonly userIds: string[];
+  private readonly userLabels: Record<string, string>;
   private readonly timeZone: string;
   private readonly fetchImpl: typeof fetch;
   private readonly maxEvents: number;
@@ -625,6 +627,11 @@ export class SpielerPlusConnector implements CalendarConnector {
     this.userIds = (options.userIds ?? [])
       .map((value) => value.trim())
       .filter(Boolean);
+    this.userLabels = Object.fromEntries(
+      Object.entries(options.userLabels ?? {})
+        .map(([userId, label]) => [userId.trim(), label.trim()] as const)
+        .filter(([userId, label]) => Boolean(userId) && Boolean(label))
+    );
     this.timeZone = options.timeZone ?? DEFAULT_TIME_ZONE;
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.maxEvents = Math.max(1, Math.min(options.maxEvents ?? 100, 200));
@@ -759,7 +766,22 @@ export class SpielerPlusConnector implements CalendarConnector {
         fetchImpl: this.fetchImpl
       });
 
-      events.push(...(await this.fetchEventsForCookie(cookie, context)));
+      const userEvents = await this.fetchEventsForCookie(cookie, context);
+      const label = this.userLabels[userId];
+
+      events.push(
+        ...userEvents.map((event) =>
+          label && event.sourceEventId.startsWith("training:")
+            ? {
+                ...event,
+                title: `${event.title} – ${label}`,
+                description: event.description
+                  ? `${event.description} · Spieler: ${label}`
+                  : `Spieler: ${label}`
+              }
+            : event
+        )
+      );
     }
 
     return events;
