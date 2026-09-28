@@ -262,3 +262,129 @@ export class FussballDeConnector implements CalendarConnector {
     });
   }
 }
+
+
+export type FussballDeClubSearchResult = {
+  name: string;
+  url: string;
+};
+
+export type FussballDeTeamSearchResult = {
+  id: string;
+  name: string;
+  url: string;
+};
+
+export function parseFussballDeClubSearchHtml(
+  html: string
+): FussballDeClubSearchResult[] {
+  const $ = cheerio.load(html);
+  const results = new Map<string, FussballDeClubSearchResult>();
+
+  $('a[href*="/verein/"]').each((_, element) => {
+    const href = $(element).attr("href");
+    const name = cleanText($(element).text());
+    const url = absoluteFussballDeUrl(href);
+
+    if (!url || !name) return;
+
+    try {
+      const parsed = new URL(url);
+      if (parsed.hostname !== "www.fussball.de") return;
+      if (!parsed.pathname.startsWith("/verein/")) return;
+      results.set(parsed.pathname, { name, url });
+    } catch {
+      // Ignore malformed links from upstream markup.
+    }
+  });
+
+  return [...results.values()].slice(0, 20);
+}
+
+export function parseFussballDeClubTeamsHtml(
+  html: string
+): FussballDeTeamSearchResult[] {
+  const $ = cheerio.load(html);
+  const results = new Map<string, FussballDeTeamSearchResult>();
+
+  $('a[href*="/mannschaft/"][href*="/team-id/"]').each((_, element) => {
+    const href = $(element).attr("href");
+    const url = absoluteFussballDeUrl(href);
+    if (!url) return;
+
+    let id: string;
+    try {
+      id = extractFussballDeTeamId(url);
+    } catch {
+      return;
+    }
+
+    const directText = cleanText($(element).text());
+    const fallbackText = cleanText($(element).closest("li, article, section, div").text());
+    const name = directText || fallbackText || id;
+
+    if (!results.has(id)) {
+      results.set(id, { id, name, url });
+    }
+  });
+
+  return [...results.values()];
+}
+
+export async function searchFussballDeClubs(
+  query: string,
+  fetchImpl: typeof fetch = fetch
+): Promise<FussballDeClubSearchResult[]> {
+  const normalized = cleanText(query);
+  if (normalized.length < 2) return [];
+
+  const url = `https://www.fussball.de/suche/-/text/${encodeURIComponent(normalized)}/restriction/-1`;
+  const response = await fetchImpl(url, {
+    headers: {
+      accept: "text/html,application/xhtml+xml",
+      "user-agent": "football-calendar/0.1 (+https://github.com/ms77-rgb/football-calendar)"
+    },
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    throw new Error(`FUSSBALL.DE search returned HTTP ${response.status}.`);
+  }
+
+  return parseFussballDeClubSearchHtml(await response.text());
+}
+
+export async function fetchFussballDeClubTeams(
+  clubUrl: string,
+  fetchImpl: typeof fetch = fetch
+): Promise<FussballDeTeamSearchResult[]> {
+  let parsed: URL;
+
+  try {
+    parsed = new URL(clubUrl);
+  } catch {
+    throw new Error("Invalid FUSSBALL.DE club URL.");
+  }
+
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.hostname !== "www.fussball.de" ||
+    !parsed.pathname.startsWith("/verein/")
+  ) {
+    throw new Error("Only FUSSBALL.DE club URLs are allowed.");
+  }
+
+  const response = await fetchImpl(parsed.toString(), {
+    headers: {
+      accept: "text/html,application/xhtml+xml",
+      "user-agent": "football-calendar/0.1 (+https://github.com/ms77-rgb/football-calendar)"
+    },
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    throw new Error(`FUSSBALL.DE club page returned HTTP ${response.status}.`);
+  }
+
+  return parseFussballDeClubTeamsHtml(await response.text());
+}
