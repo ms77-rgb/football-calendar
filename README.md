@@ -31,9 +31,9 @@ Not yet implemented:
 
 - persistent database
 - user accounts
-- SpielerPlus production credential/session handling
+- multi-user persistent feed configuration
 - background synchronization
-- production feed tokens
+- automatic SpielerPlus session renewal
 
 ## Local development
 
@@ -70,3 +70,28 @@ Private calendar URLs and authenticated sessions are treated like secrets. The S
 ## Next milestone
 
 Validate the SpielerPlus HTML parser against several trainings and games, then add secure per-user session handling so SpielerPlus events can be merged into the same subscribable ICS feed as FUSSBALL.DE.
+
+
+## Private combined feed MVP
+
+The first private combined-feed endpoint is:
+
+```text
+/api/calendar/feed/<CALENDAR_FEED_TOKEN>?team=<FUSSBALL.DE team id>::<team name>
+```
+
+It combines the selected FUSSBALL.DE teams with the authenticated SpielerPlus
+event feed.
+
+Required server-side environment variables:
+
+```text
+CALENDAR_FEED_TOKEN=<long random secret>
+SPIELERPLUS_COOKIE=<current SpielerPlus web session cookie>
+```
+
+Neither secret belongs in Git, logs, or screenshots. The feed token is intended
+to be the secret subscription URL credential; the SpielerPlus cookie stays
+server-side. This is intentionally a single-user MVP. A later milestone should
+replace these environment variables with encrypted per-user storage and a
+reconnect flow.
