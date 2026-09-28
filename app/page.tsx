@@ -1,22 +1,41 @@
+import CalendarBuilder from "@/app/components/calendar-builder";
+
 export default function HomePage() {
   return (
-    <main style={{ maxWidth: 760, margin: "64px auto", fontFamily: "system-ui", padding: 24 }}>
-      <h1>Football Calendar</h1>
-      <p>
-        Ein universeller Kalender-Aggregator für Fußballteams und Team-Apps.
-      </p>
+    <main
+      style={{
+        maxWidth: 900,
+        margin: "48px auto",
+        fontFamily: "system-ui, sans-serif",
+        padding: 24,
+        lineHeight: 1.5
+      }}
+    >
+      <header style={{ marginBottom: 28 }}>
+        <p style={{ marginBottom: 6, color: "#4b5563" }}>Football Calendar</p>
+        <h1 style={{ marginTop: 0 }}>Mehrere Fußballteams. Ein Kalender.</h1>
+        <p style={{ maxWidth: 720 }}>
+          Füge FUSSBALL.DE-Mannschaften hinzu und erzeuge einen gemeinsamen
+          Kalender-Link für iPhone, Android, Google Calendar oder Outlook.
+        </p>
+      </header>
 
-      <h2>MVP-Status</h2>
-      <ul>
-        <li>Gemeinsames Event-Modell</li>
-        <li>Connector-Schnittstelle</li>
-        <li>Normalisierung und Deduplizierung</li>
-        <li>ICS-Feed</li>
-      </ul>
+      <CalendarBuilder />
 
-      <p>
-        Demo-Feed: <a href="/api/calendar/demo">/api/calendar/demo</a>
-      </p>
+      <hr style={{ margin: "40px 0", border: 0, borderTop: "1px solid #e5e7eb" }} />
+
+      <section>
+        <h2>So funktioniert es</h2>
+        <ol>
+          <li>FUSSBALL.DE-Link einer Mannschaft kopieren.</li>
+          <li>Eine oder mehrere Mannschaften hier eintragen.</li>
+          <li>Den erzeugten Kalender-Link testen oder abonnieren.</li>
+          <li>
+            Änderungen bei FUSSBALL.DE werden beim nächsten Kalenderabruf
+            automatisch übernommen.
+          </li>
+        </ol>
+      </section>
     </main>
   );
 }
