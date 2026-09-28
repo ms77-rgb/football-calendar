@@ -24,6 +24,7 @@ export type SpielerPlusConnectorOptions = {
   cookieHeader: string;
   userIds?: string[];
   userLabels?: Record<string, string>;
+  onCookieUpdate?: (cookie: string) => Promise<void> | void;
   timeZone?: string;
   fetchImpl?: typeof fetch;
   maxEvents?: number;
@@ -618,6 +619,7 @@ export class SpielerPlusConnector implements CalendarConnector {
   private readonly cookie: string;
   private readonly userIds: string[];
   private readonly userLabels: Record<string, string>;
+  private readonly onCookieUpdate?: (cookie: string) => Promise<void> | void;
   private readonly timeZone: string;
   private readonly fetchImpl: typeof fetch;
   private readonly maxEvents: number;
@@ -632,6 +634,7 @@ export class SpielerPlusConnector implements CalendarConnector {
         .map(([userId, label]) => [userId.trim(), label.trim()] as const)
         .filter(([userId, label]) => Boolean(userId) && Boolean(label))
     );
+    this.onCookieUpdate = options.onCookieUpdate;
     this.timeZone = options.timeZone ?? DEFAULT_TIME_ZONE;
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.maxEvents = Math.max(1, Math.min(options.maxEvents ?? 100, 200));
@@ -747,6 +750,7 @@ export class SpielerPlusConnector implements CalendarConnector {
       cookie: this.cookie,
       fetchImpl: this.fetchImpl
     });
+    await this.onCookieUpdate?.(cookie);
 
     if (this.userIds.length === 0) {
       return this.fetchEventsForCookie(cookie, context);
@@ -760,11 +764,13 @@ export class SpielerPlusConnector implements CalendarConnector {
         cookie,
         fetchImpl: this.fetchImpl
       });
+      await this.onCookieUpdate?.(cookie);
 
       cookie = await refreshSpielerPlusSession({
         cookie,
         fetchImpl: this.fetchImpl
       });
+      await this.onCookieUpdate?.(cookie);
 
       const userEvents = await this.fetchEventsForCookie(cookie, context);
       const label = this.userLabels[userId];
