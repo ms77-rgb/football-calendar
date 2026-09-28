@@ -118,6 +118,42 @@ function getSetCookieValues(headers: Headers): string[] {
   return combined.split(/,(?=\s*[^;,\s]+=)/g).map((value) => value.trim());
 }
 
+async function refreshSpielerPlusSession(options: {
+  cookie: string;
+  fetchImpl: typeof fetch;
+}): Promise<string> {
+  const url = assertAllowedSpielerPlusUrl(
+    "https://www.spielerplus.de/auth/refresh-token"
+  );
+
+  const response = await options.fetchImpl(url.toString(), {
+    method: "GET",
+    headers: {
+      accept: "application/json, text/plain, */*",
+      cookie: options.cookie,
+      "user-agent":
+        "football-calendar/0.1 SpielerPlus connector (+https://github.com/ms77-rgb/football-calendar)"
+    },
+    redirect: "manual",
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `SpielerPlus Token-Refresh lieferte HTTP ${response.status}.`
+    );
+  }
+
+  const setCookies = getSetCookieValues(response.headers);
+  if (setCookies.length === 0) {
+    throw new Error(
+      "SpielerPlus Token-Refresh hat keine aktualisierten Cookies geliefert."
+    );
+  }
+
+  return mergeSetCookiesIntoCookieHeader(options.cookie, setCookies);
+}
+
 async function switchSpielerPlusUser(options: {
   userId: string;
   cookie: string;
@@ -571,6 +607,9 @@ export async function probeSpielerPlusSession(options: {
  * each training/game detail page into CalendarEvent.
  *
  * Credentials are supplied by the caller and are never persisted here.
+ * Before loading events the connector renews the short-lived authenticated
+ * cookies through GET /auth/refresh-token and carries forward all Set-Cookie
+ * values returned by SpielerPlus for the lifetime of the current feed request.
  */
 export class SpielerPlusConnector implements CalendarConnector {
   readonly source = "spielerplus" as const;
@@ -697,16 +736,25 @@ export class SpielerPlusConnector implements CalendarConnector {
   }
 
   async fetchEvents(context?: ConnectorContext): Promise<CalendarEvent[]> {
+    let cookie = await refreshSpielerPlusSession({
+      cookie: this.cookie,
+      fetchImpl: this.fetchImpl
+    });
+
     if (this.userIds.length === 0) {
-      return this.fetchEventsForCookie(this.cookie, context);
+      return this.fetchEventsForCookie(cookie, context);
     }
 
-    let cookie = this.cookie;
     const events: CalendarEvent[] = [];
 
     for (const userId of this.userIds) {
       cookie = await switchSpielerPlusUser({
         userId,
+        cookie,
+        fetchImpl: this.fetchImpl
+      });
+
+      cookie = await refreshSpielerPlusSession({
         cookie,
         fetchImpl: this.fetchImpl
       });
