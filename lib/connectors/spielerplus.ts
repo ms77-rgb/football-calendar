@@ -246,6 +246,61 @@ export function parseSpielerPlusEventIndexHtml(
   return [...references.values()];
 }
 
+type SpielerPlusAjaxEventsResponse = {
+  count: number;
+  html: string;
+};
+
+async function fetchSpielerPlusAjaxEventsPage(options: {
+  offset: number;
+  cookie: string;
+  fetchImpl: typeof fetch;
+}): Promise<SpielerPlusAjaxEventsResponse> {
+  const url = assertAllowedSpielerPlusUrl(
+    "https://www.spielerplus.de/events/ajaxgetevents"
+  );
+
+  const response = await options.fetchImpl(url.toString(), {
+    method: "POST",
+    headers: {
+      accept: "application/json, text/javascript, */*; q=0.01",
+      "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+      cookie: options.cookie,
+      "user-agent":
+        "football-calendar/0.1 SpielerPlus connector (+https://github.com/ms77-rgb/football-calendar)",
+      "x-requested-with": "XMLHttpRequest"
+    },
+    body: new URLSearchParams({
+      offset: String(options.offset)
+    }).toString(),
+    redirect: "manual",
+    cache: "no-store"
+  });
+
+  if (response.status >= 300 && response.status < 400) {
+    throw new Error(
+      "SpielerPlus-Sitzung ist beim Nachladen weiterer Termine abgelaufen."
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `SpielerPlus ajaxgetevents lieferte HTTP ${response.status}.`
+    );
+  }
+
+  const data = (await response.json()) as Partial<SpielerPlusAjaxEventsResponse>;
+
+  if (typeof data.count !== "number" || typeof data.html !== "string") {
+    throw new Error("SpielerPlus ajaxgetevents lieferte ein unerwartetes Format.");
+  }
+
+  return {
+    count: data.count,
+    html: data.html
+  };
+}
+
 export function parseSpielerPlusEventHtml(
   html: string,
   reference: SpielerPlusEventReference,
@@ -416,8 +471,9 @@ export async function probeSpielerPlusSession(options: {
 }
 
 /**
- * Reads the currently visible SpielerPlus event list with an authenticated
- * session and then parses each training/game detail page into CalendarEvent.
+ * Reads the SpielerPlus event list with an authenticated session, follows the
+ * same ajaxgetevents pagination used by "Mehr Termine laden", and then parses
+ * each training/game detail page into CalendarEvent.
  *
  * Credentials are supplied by the caller and are never persisted here.
  */
@@ -459,10 +515,53 @@ export class SpielerPlusConnector implements CalendarConnector {
       );
     }
 
-    const references = parseSpielerPlusEventIndexHtml(
+    const referenceMap = new Map<string, SpielerPlusEventReference>();
+
+    for (const reference of parseSpielerPlusEventIndexHtml(
       indexHtml,
       indexResponse.url || indexUrl.toString()
-    ).slice(0, this.maxEvents);
+    )) {
+      referenceMap.set(`${reference.eventType}:${reference.eventId}`, reference);
+    }
+
+    let offset = referenceMap.size;
+    const pageSize = 5;
+    const maxPages = Math.ceil(this.maxEvents / pageSize) + 2;
+
+    for (
+      let page = 0;
+      page < maxPages && referenceMap.size < this.maxEvents;
+      page += 1
+    ) {
+      const batch = await fetchSpielerPlusAjaxEventsPage({
+        offset,
+        cookie: this.cookie,
+        fetchImpl: this.fetchImpl
+      });
+
+      if (batch.count <= 0 || !batch.html.trim()) {
+        break;
+      }
+
+      const before = referenceMap.size;
+      for (const reference of parseSpielerPlusEventIndexHtml(
+        batch.html,
+        indexResponse.url || indexUrl.toString()
+      )) {
+        referenceMap.set(
+          `${reference.eventType}:${reference.eventId}`,
+          reference
+        );
+      }
+
+      offset += batch.count;
+
+      if (batch.count < pageSize || referenceMap.size === before) {
+        break;
+      }
+    }
+
+    const references = [...referenceMap.values()].slice(0, this.maxEvents);
 
     const events = await Promise.all(
       references.map(async (reference) => {
