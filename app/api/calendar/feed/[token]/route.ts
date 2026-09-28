@@ -38,6 +38,10 @@ export async function GET(
 ) {
   const configuredToken = process.env.CALENDAR_FEED_TOKEN;
   const spielerPlusCookie = process.env.SPIELERPLUS_COOKIE;
+  const spielerPlusUserIds = (process.env.SPIELERPLUS_USER_IDS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
 
   if (!configuredToken || !spielerPlusCookie) {
     return Response.json(
@@ -96,6 +100,7 @@ export async function GET(
 
     const spielerPlusPromise = new SpielerPlusConnector({
       cookieHeader: spielerPlusCookie,
+      userIds: spielerPlusUserIds,
       maxEvents: 50
     }).fetchEvents();
 
