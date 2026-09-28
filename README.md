@@ -88,6 +88,7 @@ Required server-side environment variables:
 ```text
 CALENDAR_FEED_TOKEN=<long random secret>
 SPIELERPLUS_COOKIE=<current SpielerPlus web session cookie>
+SPIELERPLUS_USER_IDS=<comma-separated SpielerPlus user ids, optional>
 ```
 
 Neither secret belongs in Git, logs, or screenshots. The feed token is intended
@@ -95,3 +96,12 @@ to be the secret subscription URL credential; the SpielerPlus cookie stays
 server-side. This is intentionally a single-user MVP. A later milestone should
 replace these environment variables with encrypted per-user storage and a
 reconnect flow.
+
+
+### Multiple SpielerPlus users
+
+If one SpielerPlus login contains multiple selectable users/profiles, set
+`SPIELERPLUS_USER_IDS` to the comma-separated numeric user ids. The connector
+switches users through `/site/switch-user?id=...`, carries forward the
+`Set-Cookie` response, loads all event pages for each user, and combines the
+events before ICS generation.
