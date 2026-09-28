@@ -42,11 +42,11 @@ function sanitizeCookieHeader(value: string): string {
     throw new Error("Cookie-Header fehlt.");
   }
 
-  if (trimmed.includes("\\r") || trimmed.includes("\\n")) {
+  if (trimmed.includes("\r") || trimmed.includes("\n")) {
     throw new Error("Cookie-Header enthält ungültige Zeilenumbrüche.");
   }
 
-  return trimmed.replace(/^cookie:\\s*/i, "");
+  return trimmed.replace(/^cookie:\s*/i, "");
 }
 
 async function fetchWithSafeRedirects(
