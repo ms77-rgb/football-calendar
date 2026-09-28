@@ -42,6 +42,21 @@ export async function GET(
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
+  const spielerPlusUserLabels = Object.fromEntries(
+    (process.env.SPIELERPLUS_USER_LABELS ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .map((entry) => {
+        const separator = entry.indexOf(":");
+        if (separator <= 0) return ["", ""] as const;
+        return [
+          entry.slice(0, separator).trim(),
+          entry.slice(separator + 1).trim()
+        ] as const;
+      })
+      .filter(([userId, label]) => Boolean(userId) && Boolean(label))
+  );
 
   if (!configuredToken || !spielerPlusCookie) {
     return Response.json(
@@ -101,6 +116,7 @@ export async function GET(
     const spielerPlusPromise = new SpielerPlusConnector({
       cookieHeader: spielerPlusCookie,
       userIds: spielerPlusUserIds,
+      userLabels: spielerPlusUserLabels,
       maxEvents: 50
     }).fetchEvents();
 
