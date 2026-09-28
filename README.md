@@ -23,14 +23,15 @@ Implemented:
 - ICS generator
 - demo connector
 - demo endpoint at `/api/calendar/demo`
-- connector boundaries for FUSSBALL.DE and SpielerPlus
+- real FUSSBALL.DE import
+- SpielerPlus HTML connector for authenticated event-list and detail pages
+- developer endpoint at `/api/spielerplus/events` to validate parsed trainings/games
 
 Not yet implemented:
 
 - persistent database
 - user accounts
-- real FUSSBALL.DE import
-- SpielerPlus ICS parsing
+- SpielerPlus production credential/session handling
 - background synchronization
 - production feed tokens
 
@@ -64,8 +65,8 @@ Each external platform is isolated behind a connector. The rest of the applicati
 
 ## Security principle
 
-Private calendar URLs are treated like secrets. The planned SpielerPlus integration does not require storing a user's SpielerPlus username or password.
+Private calendar URLs and authenticated sessions are treated like secrets. The SpielerPlus HTML connector accepts an existing session cookie from its caller, uses it only for server-side GET requests to `spielerplus.de`, and does not persist it. The current developer endpoint is for validation only; a subscribable production feed still needs secure per-user credential/session storage or another durable authorization mechanism.
 
 ## Next milestone
 
-Implement SpielerPlus ICS ingestion first, because it gives us a clean end-to-end integration without storing account credentials. After that, validate and implement the production-safe FUSSBALL.DE access path.
+Validate the SpielerPlus HTML parser against several trainings and games, then add secure per-user session handling so SpielerPlus events can be merged into the same subscribable ICS feed as FUSSBALL.DE.

@@ -13,12 +13,37 @@ type ProbeResult = {
   relevantLinks: Array<{ text: string; href: string }>;
 };
 
+type SpielerPlusEvent = {
+  id: string;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  location: string | null;
+  description: string | null;
+  url: string | null;
+};
+
+type EventsResult = {
+  count: number;
+  events: SpielerPlusEvent[];
+};
+
+function formatDateTime(value: string): string {
+  return new Intl.DateTimeFormat("de-DE", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Europe/Berlin"
+  }).format(new Date(value));
+}
+
 export default function SpielerPlusProbePage() {
-  const [url, setUrl] = useState("https://www.spielerplus.de/");
+  const [url, setUrl] = useState("https://www.spielerplus.de/events/index");
   const [cookieHeader, setCookieHeader] = useState("");
   const [result, setResult] = useState<ProbeResult | null>(null);
+  const [eventsResult, setEventsResult] = useState<EventsResult | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingEvents, setLoadingEvents] = useState(false);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -51,6 +76,40 @@ export default function SpielerPlusProbePage() {
     }
   }
 
+  async function loadEvents() {
+    setLoadingEvents(true);
+    setError("");
+    setEventsResult(null);
+
+    try {
+      const response = await fetch("/api/spielerplus/events", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ cookieHeader })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.detail || data.error || "Termine konnten nicht gelesen werden."
+        );
+      }
+
+      setEventsResult(data);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Termine konnten nicht gelesen werden."
+      );
+    } finally {
+      setLoadingEvents(false);
+    }
+  }
+
   return (
     <main
       style={{
@@ -63,10 +122,11 @@ export default function SpielerPlusProbePage() {
     >
       <a href="/">← Zurück</a>
 
-      <h1>SpielerPlus-Sitzung testen</h1>
+      <h1>SpielerPlus testen</h1>
       <p>
-        Diese Entwicklungsseite prüft, ob wir mit einer bestehenden
-        SpielerPlus-Sitzung eine angemeldete Seite lesen können.
+        Diese Entwicklungsseite prüft eine bestehende SpielerPlus-Sitzung und
+        kann anschließend die sichtbaren Trainings und Spiele aus der
+        Terminliste einlesen.
       </p>
 
       <div
@@ -78,11 +138,11 @@ export default function SpielerPlusProbePage() {
           marginBottom: 24
         }}
       >
-        <strong>Wichtig:</strong> Verwende hier nur eine temporäre Sitzung. Der
-        Cookie wird nicht gespeichert und nicht in einer URL abgelegt. Trotzdem
-        ist ein Session-Cookie ein Zugangsschlüssel. Teile ihn nicht im Chat
-        und widerrufe die Sitzung nach dem Test am besten durch Abmelden bei
-        SpielerPlus.
+        <strong>Wichtig:</strong> Verwende nur eine temporäre Sitzung. Der
+        Cookie wird von diesem MVP nicht gespeichert und nicht in einer URL
+        abgelegt. Trotzdem ist ein Session-Cookie ein Zugangsschlüssel. Teile
+        ihn nicht im Chat und melde dich nach dem Test bei SpielerPlus ab, wenn
+        du die Sitzung widerrufen möchtest.
       </div>
 
       <form onSubmit={submit} style={{ display: "grid", gap: 16 }}>
@@ -91,7 +151,7 @@ export default function SpielerPlusProbePage() {
           <input
             value={url}
             onChange={(event) => setUrl(event.target.value)}
-            placeholder="https://www.spielerplus.de/..."
+            placeholder="https://www.spielerplus.de/events/index"
             style={{ padding: 12, fontSize: 16 }}
           />
         </label>
@@ -108,13 +168,24 @@ export default function SpielerPlusProbePage() {
           />
         </label>
 
-        <button
-          type="submit"
-          disabled={loading || !url.trim() || !cookieHeader.trim()}
-          style={{ padding: "12px 18px", width: "fit-content" }}
-        >
-          {loading ? "Prüfe…" : "Sitzung prüfen"}
-        </button>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <button
+            type="submit"
+            disabled={loading || !url.trim() || !cookieHeader.trim()}
+            style={{ padding: "12px 18px", width: "fit-content" }}
+          >
+            {loading ? "Prüfe…" : "Sitzung prüfen"}
+          </button>
+
+          <button
+            type="button"
+            onClick={loadEvents}
+            disabled={loadingEvents || !cookieHeader.trim()}
+            style={{ padding: "12px 18px", width: "fit-content" }}
+          >
+            {loadingEvents ? "Lade Termine…" : "Termine lesen"}
+          </button>
+        </div>
       </form>
 
       {error ? (
@@ -125,7 +196,7 @@ export default function SpielerPlusProbePage() {
 
       {result ? (
         <section style={{ marginTop: 32 }}>
-          <h2>Ergebnis</h2>
+          <h2>Sitzungsprüfung</h2>
 
           <dl
             style={{
@@ -151,20 +222,37 @@ export default function SpielerPlusProbePage() {
             <dt>HTML-Größe</dt>
             <dd>{result.bodyLength.toLocaleString("de-DE")} Zeichen</dd>
           </dl>
+        </section>
+      ) : null}
 
-          <h3>Relevante interne Links</h3>
-          {result.relevantLinks.length ? (
-            <ul>
-              {result.relevantLinks.map((link) => (
-                <li key={link.href}>
-                  <span>{link.text}</span>
-                  <br />
-                  <code style={{ overflowWrap: "anywhere" }}>{link.href}</code>
-                </li>
+      {eventsResult ? (
+        <section style={{ marginTop: 32 }}>
+          <h2>Gefundene SpielerPlus-Termine</h2>
+          <p>{eventsResult.count} Termine gefunden.</p>
+
+          {eventsResult.events.length ? (
+            <div style={{ display: "grid", gap: 10 }}>
+              {eventsResult.events.map((event) => (
+                <article
+                  key={event.id}
+                  style={{
+                    border: "1px solid #d1d5db",
+                    borderRadius: 10,
+                    padding: 14
+                  }}
+                >
+                  <strong>{event.title}</strong>
+                  <div>{formatDateTime(event.startsAt)} – {formatDateTime(event.endsAt)}</div>
+                  {event.location ? <div>{event.location}</div> : null}
+                  <code style={{ fontSize: 12 }}>{event.id}</code>
+                </article>
               ))}
-            </ul>
+            </div>
           ) : (
-            <p>Keine passenden Termin-/Team-Links gefunden.</p>
+            <p>
+              Keine Trainings- oder Spiel-Links in der aktuellen Terminliste
+              gefunden.
+            </p>
           )}
         </section>
       ) : null}
