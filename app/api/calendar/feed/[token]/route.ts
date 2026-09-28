@@ -1,5 +1,5 @@
 import { buildIcsCalendar } from "@/lib/calendar/ics";
-import { normalizeEvents } from "@/lib/calendar/normalize";
+import { normalizeEvents, preferFussballDeDuplicateMatches } from "@/lib/calendar/normalize";
 import { FussballDeConnector, extractFussballDeTeamId } from "@/lib/connectors/fussball-de";
 import { SpielerPlusConnector } from "@/lib/connectors/spielerplus";
 
@@ -110,10 +110,13 @@ export async function GET(
     ]);
 
     const fussballDeEvents = fussballDeGroups.flat();
-    const events = normalizeEvents([
+    const normalizedEvents = normalizeEvents([
       ...fussballDeEvents,
       ...spielerPlusEvents
     ]);
+    const events = preferFussballDeDuplicateMatches(normalizedEvents);
+    const suppressedSpielerPlusDuplicates =
+      normalizedEvents.length - events.length;
 
     if (url.searchParams.get("debug") === "1") {
       return Response.json(
@@ -121,6 +124,7 @@ export async function GET(
           fussballDeCount: fussballDeEvents.length,
           spielerPlusCount: spielerPlusEvents.length,
           totalCount: events.length,
+          suppressedSpielerPlusDuplicates,
           spielerPlusSamples: spielerPlusEvents.slice(0, 10).map((event) => ({
             id: event.sourceEventId,
             title: event.title,
