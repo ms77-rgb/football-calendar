@@ -32,11 +32,15 @@ export default function CalendarBuilder() {
   const [loadingTeams, setLoadingTeams] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [privateFeedToken, setPrivateFeedToken] = useState("");
 
   const feedUrl = useMemo(() => {
     if (typeof window === "undefined" || teams.length === 0) return "";
 
-    const url = new URL("/api/calendar/multi", window.location.origin);
+    const path = privateFeedToken.trim()
+      ? `/api/calendar/feed/${encodeURIComponent(privateFeedToken.trim())}`
+      : "/api/calendar/multi";
+    const url = new URL(path, window.location.origin);
 
     for (const team of teams) {
       url.searchParams.append(
@@ -46,7 +50,7 @@ export default function CalendarBuilder() {
     }
 
     return url.toString();
-  }, [teams]);
+  }, [teams, privateFeedToken]);
 
   async function searchClubs(event: FormEvent) {
     event.preventDefault();
@@ -289,10 +293,44 @@ export default function CalendarBuilder() {
           marginTop: 28,
           padding: 18,
           borderRadius: 12,
+          background: "#f9fafb",
+          border: "1px solid #d1d5db"
+        }}
+      >
+        <h2 style={{ marginTop: 0 }}>4. SpielerPlus hinzufügen (MVP)</h2>
+        <p style={{ color: "#4b5563" }}>
+          Wenn auf dem Server ein privater Feed eingerichtet ist, kannst du hier
+          dessen Feed-Token eintragen. Dann enthält der erzeugte Link zusätzlich
+          die aktuellen SpielerPlus-Termine. Der Token wird nur für die URL in
+          deinem Browser verwendet.
+        </p>
+        <input
+          type="password"
+          value={privateFeedToken}
+          onChange={(event) => {
+            setPrivateFeedToken(event.target.value);
+            setCopied(false);
+          }}
+          placeholder="Privater Feed-Token (optional)"
+          autoComplete="off"
+          style={{
+            width: "100%",
+            boxSizing: "border-box",
+            padding: 12,
+            fontSize: 16
+          }}
+        />
+      </div>
+
+      <div
+        style={{
+          marginTop: 28,
+          padding: 18,
+          borderRadius: 12,
           background: "#f3f4f6"
         }}
       >
-        <h2 style={{ marginTop: 0 }}>4. Dein gemeinsamer Kalender</h2>
+        <h2 style={{ marginTop: 0 }}>5. Dein gemeinsamer Kalender</h2>
 
         {feedUrl ? (
           <>
