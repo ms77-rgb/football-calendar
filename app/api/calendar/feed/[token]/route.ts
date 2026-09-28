@@ -109,10 +109,33 @@ export async function GET(
       spielerPlusPromise
     ]);
 
+    const fussballDeEvents = fussballDeGroups.flat();
     const events = normalizeEvents([
-      ...fussballDeGroups.flat(),
+      ...fussballDeEvents,
       ...spielerPlusEvents
     ]);
+
+    if (url.searchParams.get("debug") === "1") {
+      return Response.json(
+        {
+          fussballDeCount: fussballDeEvents.length,
+          spielerPlusCount: spielerPlusEvents.length,
+          totalCount: events.length,
+          spielerPlusSamples: spielerPlusEvents.slice(0, 10).map((event) => ({
+            id: event.sourceEventId,
+            title: event.title,
+            startsAt: event.startsAt.toISOString()
+          }))
+        },
+        {
+          status: 200,
+          headers: {
+            "Cache-Control": "no-store",
+            "X-Robots-Tag": "noindex, nofollow"
+          }
+        }
+      );
+    }
 
     const configuredNames = selections
       .map((selection) => selection.name)
