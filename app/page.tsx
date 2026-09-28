@@ -32,6 +32,25 @@ export default function HomePage() {
       />
 
       <section>
+        <h2>SpielerPlus testen</h2>
+        <p>
+          Für den nächsten Integrationsschritt gibt es eine geschützte
+          Entwicklungsseite zum Prüfen einer bestehenden SpielerPlus-Sitzung.
+        </p>
+        <p>
+          <a href="/dev/spielerplus">SpielerPlus-Sitzung testen →</a>
+        </p>
+      </section>
+
+      <hr
+        style={{
+          margin: "40px 0",
+          border: 0,
+          borderTop: "1px solid #e5e7eb"
+        }}
+      />
+
+      <section>
         <h2>So funktioniert es</h2>
         <ol>
           <li>Vereinsnamen eingeben und den richtigen Verein auswählen.</li>
