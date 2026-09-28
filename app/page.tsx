@@ -15,21 +15,28 @@ export default function HomePage() {
         <p style={{ marginBottom: 6, color: "#4b5563" }}>Football Calendar</p>
         <h1 style={{ marginTop: 0 }}>Mehrere Fußballteams. Ein Kalender.</h1>
         <p style={{ maxWidth: 720 }}>
-          Füge FUSSBALL.DE-Mannschaften hinzu und erzeuge einen gemeinsamen
-          Kalender-Link für iPhone, Android, Google Calendar oder Outlook.
+          Suche deinen Verein direkt bei FUSSBALL.DE, wähle die gewünschten
+          Mannschaften aus und abonniere anschließend einen gemeinsamen
+          Kalender.
         </p>
       </header>
 
       <CalendarBuilder />
 
-      <hr style={{ margin: "40px 0", border: 0, borderTop: "1px solid #e5e7eb" }} />
+      <hr
+        style={{
+          margin: "40px 0",
+          border: 0,
+          borderTop: "1px solid #e5e7eb"
+        }}
+      />
 
       <section>
         <h2>So funktioniert es</h2>
         <ol>
-          <li>FUSSBALL.DE-Link einer Mannschaft kopieren.</li>
-          <li>Eine oder mehrere Mannschaften hier eintragen.</li>
-          <li>Den erzeugten Kalender-Link testen oder abonnieren.</li>
+          <li>Vereinsnamen eingeben und den richtigen Verein auswählen.</li>
+          <li>Eine oder mehrere Mannschaften anklicken.</li>
+          <li>Den erzeugten Kalender testen oder direkt abonnieren.</li>
           <li>
             Änderungen bei FUSSBALL.DE werden beim nächsten Kalenderabruf
             automatisch übernommen.
