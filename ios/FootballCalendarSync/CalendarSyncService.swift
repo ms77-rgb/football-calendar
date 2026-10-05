@@ -151,6 +151,17 @@ final class CalendarSyncService: ObservableObject {
                 } else {
                     unchanged += 1
                 }
+
+                if let duplicate = bestManualDuplicateMatch(
+                    for: remote,
+                    in: unmarkedEvents,
+                    excluding: adoptedEventIdentifiers
+                ) {
+                    adoptedEventIdentifiers.insert(duplicate.eventIdentifier)
+                    try eventStore.remove(duplicate, span: .thisEvent, commit: false)
+                    deleted += 1
+                }
+
                 continue
             }
 
@@ -228,14 +239,11 @@ final class CalendarSyncService: ObservableObject {
         excluding usedIdentifiers: Set<String>
     ) -> EKEvent? {
         let normalizedRemoteTitle = normalize(remote.title)
+        let isFussballDe = remote.id.hasPrefix("fussball-de:")
 
         let candidates = events
             .filter { event in
                 guard !usedIdentifiers.contains(event.eventIdentifier) else {
-                    return false
-                }
-
-                guard normalize(event.title ?? "") == normalizedRemoteTitle else {
                     return false
                 }
 
@@ -247,7 +255,25 @@ final class CalendarSyncService: ObservableObject {
                     return false
                 }
 
-                return abs(start.timeIntervalSince(remote.start)) <= 3 * 60 * 60
+                let startDelta = abs(start.timeIntervalSince(remote.start))
+                guard startDelta <= 3 * 60 * 60 else {
+                    return false
+                }
+
+                let normalizedExistingTitle = normalize(event.title ?? "")
+
+                if normalizedExistingTitle == normalizedRemoteTitle {
+                    return true
+                }
+
+                guard isFussballDe else {
+                    return false
+                }
+
+                return looksLikeManualFootballMatch(
+                    existingTitle: normalizedExistingTitle,
+                    remoteTitle: normalizedRemoteTitle
+                )
             }
             .sorted {
                 abs(($0.startDate ?? .distantPast).timeIntervalSince(remote.start)) <
@@ -270,6 +296,41 @@ final class CalendarSyncService: ObservableObject {
         }
 
         return nil
+    }
+
+    private func looksLikeManualFootballMatch(
+        existingTitle: String,
+        remoteTitle: String
+    ) -> Bool {
+        let genericFootballTitles = [
+            "fussball",
+            "fußball",
+            "spiel",
+            "punktspiel",
+            "heimspiel",
+            "auswartsspiel",
+            "auswärtsspiel"
+        ]
+
+        if genericFootballTitles.contains(existingTitle) {
+            return true
+        }
+
+        let remoteWords = Set(
+            remoteTitle
+                .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+                .map(String.init)
+                .filter { $0.count >= 4 }
+        )
+
+        let existingWords = Set(
+            existingTitle
+                .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+                .map(String.init)
+                .filter { $0.count >= 4 }
+        )
+
+        return !remoteWords.intersection(existingWords).isEmpty
     }
 
     private func normalize(_ value: String) -> String {
