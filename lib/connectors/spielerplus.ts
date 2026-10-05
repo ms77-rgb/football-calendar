@@ -265,6 +265,32 @@ function isNotNominatedPage(html: string): boolean {
   );
 }
 
+function elementShowsNotNominated(
+  $: cheerio.CheerioAPI,
+  element: cheerio.Element
+): boolean {
+  let current = $(element);
+
+  for (let depth = 0; depth < 5 && current.length > 0; depth += 1) {
+    const text = normalizeText(current.text()).toLowerCase();
+
+    if (
+      text.length <= 600 &&
+      (
+        /\bnicht nominiert\b/.test(text) ||
+        /\bnicht im kader\b/.test(text) ||
+        /\bkeine nominierung\b/.test(text)
+      )
+    ) {
+      return true;
+    }
+
+    current = current.parent();
+  }
+
+  return false;
+}
+
 function localTimeInZoneToUtc(
   parts: {
     year: number;
@@ -358,6 +384,10 @@ export function parseSpielerPlusEventIndexHtml(
   $("a[href]").each((_, element) => {
     const href = $(element).attr("href");
     if (!href) return;
+
+    if (elementShowsNotNominated($, element)) {
+      return;
+    }
 
     let url: URL;
     try {
