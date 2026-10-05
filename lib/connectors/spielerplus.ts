@@ -254,6 +254,17 @@ function isLoginPage(html: string): boolean {
   );
 }
 
+function isNotNominatedPage(html: string): boolean {
+  const $ = cheerio.load(html);
+  const pageText = normalizeText($("body").text()).toLowerCase();
+
+  return (
+    /\bnicht nominiert\b/.test(pageText) ||
+    /\bdu bist nicht nominiert\b/.test(pageText) ||
+    /\bnicht im kader\b/.test(pageText)
+  );
+}
+
 function localTimeInZoneToUtc(
   parts: {
     year: number;
@@ -730,6 +741,10 @@ export class SpielerPlusConnector implements CalendarConnector {
           throw new Error(
             "SpielerPlus-Sitzung ist während des Abrufs abgelaufen."
           );
+        }
+
+        if (isNotNominatedPage(html)) {
+          return null;
         }
 
         try {
