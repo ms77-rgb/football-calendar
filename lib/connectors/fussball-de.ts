@@ -56,6 +56,45 @@ function rowIsCancelled($: cheerio.CheerioAPI, element: any): boolean {
   );
 }
 
+function textShowsCancellation(text: string, markup = ""): boolean {
+  const normalized = cleanText(text).toLowerCase();
+  const normalizedMarkup = markup.toLowerCase();
+
+  return (
+    /\babsetzung\b/.test(normalized) ||
+    /\babgesetzt\b/.test(normalized) ||
+    /\babse\.?(?:\s|$)/.test(normalized) ||
+    /\babgesagt\b/.test(normalized) ||
+    /\babges\.?(?:\s|$)/.test(normalized) ||
+    /\bausgefallen\b/.test(normalized) ||
+    /\bannulliert\b/.test(normalized) ||
+    /\bspielausfall\b/.test(normalized) ||
+    /\bnicht angetreten\b/.test(normalized) ||
+    /cancelled|canceled|absetzung|abgesetzt|abgesagt|ausgefallen|annulliert/.test(normalizedMarkup)
+  );
+}
+
+function detailLinkIsCancelled($: cheerio.CheerioAPI, element: any): boolean {
+  let current = $(element);
+
+  for (let depth = 0; depth < 8 && current.length > 0; depth += 1) {
+    const linkCount = current.find("td.column-detail a, a[href*='/spiel/']").length;
+
+    // Stop before climbing into a container that holds more than one fixture.
+    if (linkCount > 1) {
+      return false;
+    }
+
+    if (textShowsCancellation(current.text(), current.toString())) {
+      return true;
+    }
+
+    current = current.parent();
+  }
+
+  return false;
+}
+
 function parseKickoffText(value: string): {
   year: number;
   month: number;
@@ -190,7 +229,10 @@ export function parseFussballDeMatchplanHtml(
 
   const detailLinks = $("td.column-detail a")
     .toArray()
-    .map((element) => absoluteFussballDeUrl($(element).attr("href")));
+    .map((element) => ({
+      url: absoluteFussballDeUrl($(element).attr("href")),
+      cancelled: detailLinkIsCancelled($, element)
+    }));
 
   const venues = $(
     ".column-venue, .venue, .location, td.column-detail .location"
@@ -205,7 +247,10 @@ export function parseFussballDeMatchplanHtml(
   for (let index = 0; index < numberOfMatches; index += 1) {
     const homeTeam = clubs[index * 2];
     const awayTeam = clubs[index * 2 + 1];
-    if (kickoffRows[index].cancelled) {
+    if (
+      kickoffRows[index].cancelled ||
+      detailLinks[index]?.cancelled
+    ) {
       continue;
     }
 
@@ -213,7 +258,7 @@ export function parseFussballDeMatchplanHtml(
     const endsAt = new Date(
       kickoff.getTime() + DEFAULT_MATCH_DURATION_MINUTES * 60_000
     );
-    const url = detailLinks[index];
+    const url = detailLinks[index]?.url;
     const fallbackId = [
       options.teamId,
       kickoff.toISOString(),
