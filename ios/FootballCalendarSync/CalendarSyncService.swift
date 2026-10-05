@@ -164,8 +164,14 @@ final class CalendarSyncService: ObservableObject {
                 excluding: adoptedEventIdentifiers
             ) {
                 adoptedEventIdentifiers.insert(legacy.eventIdentifier)
-                apply(remote, to: legacy)
-                try eventStore.save(legacy, span: .thisEvent, commit: false)
+
+                try eventStore.remove(legacy, span: .thisEvent, commit: false)
+
+                let replacement = EKEvent(eventStore: eventStore)
+                replacement.calendar = calendar
+                apply(remote, to: replacement)
+                try eventStore.save(replacement, span: .thisEvent, commit: false)
+
                 adopted += 1
                 continue
             }
