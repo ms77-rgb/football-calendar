@@ -208,57 +208,62 @@ export function parseFussballDeMatchplanHtml(
   const $ = cheerio.load(html);
   const timeZone = options.timeZone ?? DEFAULT_TIME_ZONE;
   const updatedAt = options.now ?? new Date();
-
-  const kickoffRows = $("tr.row-headline")
-    .toArray()
-    .map((element) => ({
-      kickoff: parseKickoffText($(element).text()),
-      cancelled: rowIsCancelled($, element)
-    }))
-    .filter(
-      (value): value is {
-        kickoff: NonNullable<ReturnType<typeof parseKickoffText>>;
-        cancelled: boolean;
-      } => Boolean(value.kickoff)
-    );
-
-  const clubs = $(".club-name")
-    .toArray()
-    .map((element) => cleanText($(element).text()))
-    .filter(Boolean);
-
-  const detailLinks = $("td.column-detail a")
-    .toArray()
-    .map((element) => ({
-      url: absoluteFussballDeUrl($(element).attr("href")),
-      cancelled: detailLinkIsCancelled($, element)
-    }));
-
-  const venues = $(
-    ".column-venue, .venue, .location, td.column-detail .location"
-  )
-    .toArray()
-    .map((element) => cleanText($(element).text()))
-    .filter(Boolean);
-
-  const numberOfMatches = Math.min(kickoffRows.length, Math.floor(clubs.length / 2));
   const events: CalendarEvent[] = [];
 
-  for (let index = 0; index < numberOfMatches; index += 1) {
-    const homeTeam = clubs[index * 2];
-    const awayTeam = clubs[index * 2 + 1];
-    if (
-      kickoffRows[index].cancelled ||
-      detailLinks[index]?.cancelled
-    ) {
-      continue;
+  $("tr.row-headline").each((_, headlineElement) => {
+    const headline = $(headlineElement);
+    const kickoffParts = parseKickoffText(headline.text());
+    if (!kickoffParts) {
+      return;
     }
 
-    const kickoff = localTimeInZoneToUtc(kickoffRows[index].kickoff, timeZone);
+    // FUSSBALL.DE renders one fixture across multiple adjacent table rows.
+    // Keep the headline together with its following rows until the next
+    // row-headline, instead of aligning independent global arrays by index.
+    const followingRows = headline.nextUntil("tr.row-headline");
+    const block = headline.add(followingRows);
+    const blockText = cleanText(block.text());
+    const blockMarkup = block
+      .toArray()
+      .map((element) => $.html(element))
+      .join("\n");
+
+    if (textShowsCancellation(blockText, blockMarkup)) {
+      return;
+    }
+
+    const clubs = block
+      .find(".club-name")
+      .toArray()
+      .map((element) => cleanText($(element).text()))
+      .filter(Boolean);
+
+    if (clubs.length < 2) {
+      return;
+    }
+
+    const homeTeam = clubs[0];
+    const awayTeam = clubs[1];
+    const detailElement = block.find("td.column-detail a").first();
+    const url = absoluteFussballDeUrl(detailElement.attr("href"));
+
+    // Some FUSSBALL.DE layouts put status text immediately around the detail
+    // link. Keep this additional fixture-local check as a fallback.
+    if (detailElement.length > 0 && detailLinkIsCancelled($, detailElement[0])) {
+      return;
+    }
+
+    const venue = cleanText(
+      block
+        .find(".column-venue, .venue, .location, td.column-detail .location")
+        .first()
+        .text()
+    );
+
+    const kickoff = localTimeInZoneToUtc(kickoffParts, timeZone);
     const endsAt = new Date(
       kickoff.getTime() + DEFAULT_MATCH_DURATION_MINUTES * 60_000
     );
-    const url = detailLinks[index]?.url;
     const fallbackId = [
       options.teamId,
       kickoff.toISOString(),
@@ -275,14 +280,14 @@ export function parseFussballDeMatchplanHtml(
       description: options.teamName
         ? `Spiel von ${options.teamName} · Quelle: FUSSBALL.DE`
         : "Quelle: FUSSBALL.DE",
-      location: venues[index] || undefined,
+      location: venue || undefined,
       startsAt: kickoff,
       endsAt,
       teamName: options.teamName,
       url,
       updatedAt
     });
-  }
+  });
 
   return events;
 }
