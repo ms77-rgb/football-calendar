@@ -89,6 +89,15 @@ final class CalendarSyncService: ObservableObject {
             }
 
             let remoteEvents = try await FeedParser().load(from: feedURL)
+
+            guard !remoteEvents.isEmpty else {
+                throw NSError(
+                    domain: "FootballCalendarSync",
+                    code: 4,
+                    userInfo: [NSLocalizedDescriptionKey: "Der Feed enthält 0 Termine. Aus Sicherheitsgründen wurden keine Kalendertermine geändert oder gelöscht."]
+                )
+            }
+
             let result = try reconcile(remoteEvents: remoteEvents, calendar: calendar)
             status = "Fertig: \(result.created) neu, \(result.adopted) übernommen, \(result.updated) geändert, \(result.deleted) gelöscht, \(result.unchanged) unverändert."
         } catch {
@@ -118,12 +127,8 @@ final class CalendarSyncService: ObservableObject {
                 continue
             }
 
-            if let externalID = event.calendarItemExternalIdentifier,
-               externalID.hasSuffix(managedUIDSuffix) {
-                existingByRemoteID[externalID] = event
-                continue
-            }
-
+            // Legacy imports are never considered managed/deletable until this
+            // app explicitly adopts them and writes our marker into the notes.
             unmarkedEvents.append(event)
         }
 
@@ -146,7 +151,11 @@ final class CalendarSyncService: ObservableObject {
                 continue
             }
 
-            if let legacy = bestLegacyMatch(
+            if let legacy = bestLegacyExternalIDMatch(
+                for: remote,
+                in: unmarkedEvents,
+                excluding: adoptedEventIdentifiers
+            ) ?? bestLegacyMatch(
                 for: remote,
                 in: unmarkedEvents,
                 excluding: adoptedEventIdentifiers
@@ -188,16 +197,22 @@ final class CalendarSyncService: ObservableObject {
     }
 
     private func managedID(for event: EKEvent) -> String? {
-        if let id = remoteID(from: event.notes) {
-            return id
-        }
+        remoteID(from: event.notes)
+    }
 
-        if let externalID = event.calendarItemExternalIdentifier,
-           externalID.hasSuffix(managedUIDSuffix) {
-            return externalID
-        }
 
-        return nil
+    private func bestLegacyExternalIDMatch(
+        for remote: RemoteCalendarEvent,
+        in events: [EKEvent],
+        excluding usedIdentifiers: Set<String>
+    ) -> EKEvent? {
+        events.first { event in
+            guard !usedIdentifiers.contains(event.eventIdentifier) else {
+                return false
+            }
+
+            return event.calendarItemExternalIdentifier == remote.id
+        }
     }
 
     private func bestLegacyMatch(
