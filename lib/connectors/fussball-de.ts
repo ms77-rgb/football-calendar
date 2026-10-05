@@ -39,14 +39,15 @@ function cleanText(value: string): string {
 
 function rowIsCancelled($: cheerio.CheerioAPI, element: any): boolean {
   const row = $(element).closest("tr");
-  const text = cleanText(row.text()).toLowerCase();
-  const markup = row.toString().toLowerCase();
+  const block = row.closest("tbody").length > 0 ? row.closest("tbody") : row.parent();
+  const text = cleanText(block.text()).toLowerCase();
+  const markup = block.toString().toLowerCase();
 
   return (
     /\babgesetzt\b/.test(text) ||
-    /\babse\.?\b/.test(text) ||
+    /\babse\.?(?:\s|$)/.test(text) ||
     /\babgesagt\b/.test(text) ||
-    /\babges\.?\b/.test(text) ||
+    /\babges\.?(?:\s|$)/.test(text) ||
     /\bausgefallen\b/.test(text) ||
     /\bannulliert\b/.test(text) ||
     /\bspielausfall\b/.test(text) ||
