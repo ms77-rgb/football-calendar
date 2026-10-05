@@ -151,6 +151,17 @@ final class CalendarSyncService: ObservableObject {
                 } else {
                     unchanged += 1
                 }
+
+                if let duplicate = bestManualDuplicateMatch(
+                    for: remote,
+                    in: unmarkedEvents,
+                    excluding: adoptedEventIdentifiers
+                ) {
+                    adoptedEventIdentifiers.insert(duplicate.eventIdentifier)
+                    try eventStore.remove(duplicate, span: .thisEvent, commit: false)
+                    deleted += 1
+                }
+
                 continue
             }
 
