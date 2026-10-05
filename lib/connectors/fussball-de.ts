@@ -37,6 +37,24 @@ function cleanText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function rowIsCancelled($: cheerio.CheerioAPI, element: any): boolean {
+  const row = $(element).closest("tr");
+  const text = cleanText(row.text()).toLowerCase();
+  const markup = row.toString().toLowerCase();
+
+  return (
+    /\babgesetzt\b/.test(text) ||
+    /\babse\.?\b/.test(text) ||
+    /\babgesagt\b/.test(text) ||
+    /\babges\.?\b/.test(text) ||
+    /\bausgefallen\b/.test(text) ||
+    /\bannulliert\b/.test(text) ||
+    /\bspielausfall\b/.test(text) ||
+    /\bnicht angetreten\b/.test(text) ||
+    /cancelled|canceled|abgesetzt|abgesagt|ausgefallen|annulliert/.test(markup)
+  );
+}
+
 function parseKickoffText(value: string): {
   year: number;
   month: number;
@@ -153,8 +171,16 @@ export function parseFussballDeMatchplanHtml(
 
   const kickoffRows = $("tr.row-headline")
     .toArray()
-    .map((element) => parseKickoffText($(element).text()))
-    .filter((value): value is NonNullable<typeof value> => Boolean(value));
+    .map((element) => ({
+      kickoff: parseKickoffText($(element).text()),
+      cancelled: rowIsCancelled($, element)
+    }))
+    .filter(
+      (value): value is {
+        kickoff: NonNullable<ReturnType<typeof parseKickoffText>>;
+        cancelled: boolean;
+      } => Boolean(value.kickoff)
+    );
 
   const clubs = $(".club-name")
     .toArray()
@@ -178,7 +204,11 @@ export function parseFussballDeMatchplanHtml(
   for (let index = 0; index < numberOfMatches; index += 1) {
     const homeTeam = clubs[index * 2];
     const awayTeam = clubs[index * 2 + 1];
-    const kickoff = localTimeInZoneToUtc(kickoffRows[index], timeZone);
+    if (kickoffRows[index].cancelled) {
+      continue;
+    }
+
+    const kickoff = localTimeInZoneToUtc(kickoffRows[index].kickoff, timeZone);
     const endsAt = new Date(
       kickoff.getTime() + DEFAULT_MATCH_DURATION_MINUTES * 60_000
     );
