@@ -732,14 +732,28 @@ export class SpielerPlusConnector implements CalendarConnector {
           );
         }
 
-        return parseSpielerPlusEventHtml(html, reference, {
-          timeZone: this.timeZone,
-          now: context?.now
-        });
+        try {
+          return parseSpielerPlusEventHtml(html, reference, {
+            timeZone: this.timeZone,
+            now: context?.now
+          });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+
+          if (
+            message.includes("enthält kein Datum") ||
+            message.includes("enthält keine Beginn-Uhrzeit")
+          ) {
+            return null;
+          }
+
+          throw error;
+        }
       })
     );
 
-    return events;
+    return events.filter((event): event is CalendarEvent => event !== null);
   }
 
   async fetchEvents(context?: ConnectorContext): Promise<CalendarEvent[]> {
