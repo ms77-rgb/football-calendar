@@ -141,7 +141,14 @@ export async function GET(
           spielerPlusCount: spielerPlusEvents.length,
           totalCount: events.length,
           suppressedSpielerPlusDuplicates,
-          spielerPlusSamples: spielerPlusEvents.slice(0, 10).map((event) => ({
+          spielerPlusConfiguredUsers: spielerPlusUserIds.length,
+          spielerPlusConfiguredLabels: Object.values(spielerPlusUserLabels),
+          spielerPlusSamplesFirst: spielerPlusEvents.slice(0, 10).map((event) => ({
+            id: event.sourceEventId,
+            title: event.title,
+            startsAt: event.startsAt.toISOString()
+          })),
+          spielerPlusSamplesLast: spielerPlusEvents.slice(-10).map((event) => ({
             id: event.sourceEventId,
             title: event.title,
             startsAt: event.startsAt.toISOString()
