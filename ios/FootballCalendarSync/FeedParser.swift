@@ -34,6 +34,10 @@ struct FeedParser {
             throw FeedParserError.invalidResponse
         }
 
+        guard text.contains("BEGIN:VCALENDAR") else {
+            throw FeedParserError.invalidCalendar
+        }
+
         return try parse(text)
     }
 
@@ -66,7 +70,7 @@ struct FeedParser {
             current?[key] = unescape(value)
         }
 
-        if events.isEmpty && text.contains("BEGIN:VEVENT") {
+        if events.isEmpty {
             throw FeedParserError.invalidCalendar
         }
 
