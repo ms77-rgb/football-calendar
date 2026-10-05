@@ -34,7 +34,7 @@ Not yet implemented:
 - user accounts
 - multi-user persistent feed configuration
 - background synchronization
-- durable persistence of rotated SpielerPlus refresh/session cookies
+
 
 ## Local development
 
@@ -91,6 +91,8 @@ CALENDAR_FEED_TOKEN=<long random secret>
 SPIELERPLUS_COOKIE=<current SpielerPlus web session cookie>
 SPIELERPLUS_USER_IDS=<comma-separated SpielerPlus user ids, optional>
 SPIELERPLUS_USER_LABELS=<optional id:display-name pairs, comma-separated>
+SPIELERPLUS_SESSION_KEY=<64 hex chars; AES-256 key for encrypted persisted session>
+BLOB_READ_WRITE_TOKEN=<provided by a connected private Vercel Blob store>
 ```
 
 Neither secret belongs in Git, logs, or screenshots. The feed token is intended
@@ -122,7 +124,20 @@ value into the in-memory session used for that feed request. The same refresh is
 performed after switching SpielerPlus users.
 
 This removes the need to manually replace short-lived `_identity_token`
-cookies. The current MVP still bootstraps from `SPIELERPLUS_COOKIE` on every
-serverless invocation. If SpielerPlus rotates or eventually expires the
-long-lived refresh/session cookie, a persistent encrypted store is required to
-carry the rotated cookie jar across deployments and cold starts.
+cookies.
+
+### Persistent SpielerPlus session
+
+For autonomous operation, connect a **private Vercel Blob** store to the
+deployment and set `SPIELERPLUS_SESSION_KEY` to a random 32-byte key encoded as
+64 hexadecimal characters. The first successful feed request bootstraps from
+`SPIELERPLUS_COOKIE`. Every refreshed or switched SpielerPlus cookie jar is
+then encrypted with AES-256-GCM and overwritten at
+`private/spielerplus/session.json` in the private Blob store.
+
+On later serverless invocations the persisted encrypted cookie jar is loaded
+first. `SPIELERPLUS_COOKIE` remains only as the bootstrap/recovery value.
+
+The private feed debug response reports `spielerPlusSessionSource` and
+`spielerPlusSessionPersistence` so the storage path can be verified without
+exposing credentials.
