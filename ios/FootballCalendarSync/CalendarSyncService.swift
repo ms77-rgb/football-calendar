@@ -206,6 +206,33 @@ final class CalendarSyncService: ObservableObject {
             deleted += 1
         }
 
+        // Clean up legacy FUSSBALL.DE imports that were created before this app
+        // added its management marker. Imported events keep their fussball.de URL,
+        // so we can safely compare them against the URLs that still exist remotely.
+        let remoteFussballURLs = Set(
+            remoteEvents
+                .filter { $0.id.hasPrefix("fussball-de:") }
+                .compactMap { $0.url?.absoluteString }
+        )
+
+        for legacy in unmarkedEvents {
+            guard !adoptedEventIdentifiers.contains(legacy.eventIdentifier) else {
+                continue
+            }
+
+            guard
+                let url = legacy.url,
+                url.host?.lowercased().contains("fussball.de") == true
+            else {
+                continue
+            }
+
+            if !remoteFussballURLs.contains(url.absoluteString) {
+                try eventStore.remove(legacy, span: .thisEvent, commit: false)
+                deleted += 1
+            }
+        }
+
         if created + adopted + updated + deleted > 0 {
             try eventStore.commit()
         }
