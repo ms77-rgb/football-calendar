@@ -271,21 +271,29 @@ function elementShowsNotNominated(
 ): boolean {
   let current = $(element);
 
-  for (let depth = 0; depth < 5 && current.length > 0; depth += 1) {
+  for (let depth = 0; depth < 8 && current.length > 0; depth += 1) {
+    const eventLinkCount = current
+      .find('a[href*="/training/view"], a[href*="/game/view"]')
+      .length;
+
+    // Once an ancestor contains more than one event link, we have reached the
+    // surrounding list rather than this event card. Do not leak one player's
+    // "Nicht nominiert" status into neighboring events.
+    if (eventLinkCount > 1) {
+      return false;
+    }
+
     const text = normalizeText(current.text()).toLowerCase();
     const markup = current.toString().toLowerCase();
 
     if (
-      text.length <= 600 &&
-      (
-        /\bnicht nominiert\b/.test(text) ||
-        /\bnicht im kader\b/.test(text) ||
-        /\bkeine nominierung\b/.test(text) ||
-        /nicht[-_ ]?nominiert/.test(markup) ||
-        /not[-_ ]?nominated/.test(markup) ||
-        /not[-_ ]?selected/.test(markup) ||
-        /nominated=["']?false/.test(markup)
-      )
+      /\bnicht nominiert\b/.test(text) ||
+      /\bnicht im kader\b/.test(text) ||
+      /\bkeine nominierung\b/.test(text) ||
+      /nicht[-_ ]?nominiert/.test(markup) ||
+      /not[-_ ]?nominated/.test(markup) ||
+      /not[-_ ]?selected/.test(markup) ||
+      /nominated=["']?false/.test(markup)
     ) {
       return true;
     }
