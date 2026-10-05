@@ -2,8 +2,15 @@ import Combine
 import EventKit
 import Foundation
 
+struct CalendarChoice: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let sourceTitle: String
+}
+
 struct SyncResult {
     let created: Int
+    let adopted: Int
     let updated: Int
     let deleted: Int
     let unchanged: Int
@@ -12,11 +19,11 @@ struct SyncResult {
 @MainActor
 final class CalendarSyncService: ObservableObject {
     private let eventStore = EKEventStore()
-    private let calendarName = "Fußball + SpielerPlus"
     private let markerPrefix = "football-calendar-id:"
 
     @Published var isRunning = false
     @Published var status = "Noch nicht synchronisiert"
+    @Published var calendars: [CalendarChoice] = []
 
     func requestAccess() async throws {
         if #available(iOS 17.0, *) {
@@ -34,44 +41,107 @@ final class CalendarSyncService: ObservableObject {
         }
     }
 
-    func sync(feedURL: URL) async {
-        isRunning = true
-        defer { isRunning = false }
-
+    func loadCalendars() async {
         do {
             try await requestAccess()
-            let remoteEvents = try await FeedParser().load(from: feedURL)
-            let result = try reconcile(remoteEvents: remoteEvents)
-            status = "Fertig: \(result.created) neu, \(result.updated) geändert, \(result.deleted) gelöscht, \(result.unchanged) unverändert."
+
+            calendars = eventStore.calendars(for: .event)
+                .filter { $0.allowsContentModifications }
+                .map {
+                    CalendarChoice(
+                        id: $0.calendarIdentifier,
+                        title: $0.title,
+                        sourceTitle: $0.source.title
+                    )
+                }
+                .sorted {
+                    if $0.sourceTitle == $1.sourceTitle {
+                        return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+                    }
+                    return $0.sourceTitle.localizedCaseInsensitiveCompare($1.sourceTitle) == .orderedAscending
+                }
         } catch {
             status = error.localizedDescription
         }
     }
 
-    private func reconcile(remoteEvents: [RemoteCalendarEvent]) throws -> SyncResult {
-        let calendar = try getOrCreateCalendar()
+    func sync(feedURL: URL, targetCalendarID: String) async {
+        guard !isRunning else { return }
 
+        isRunning = true
+        defer { isRunning = false }
+
+        do {
+            try await requestAccess()
+
+            guard let calendar = eventStore.calendar(withIdentifier: targetCalendarID) else {
+                throw NSError(
+                    domain: "FootballCalendarSync",
+                    code: 2,
+                    userInfo: [NSLocalizedDescriptionKey: "Der ausgewählte Kalender wurde nicht gefunden."]
+                )
+            }
+
+            guard calendar.allowsContentModifications else {
+                throw NSError(
+                    domain: "FootballCalendarSync",
+                    code: 3,
+                    userInfo: [NSLocalizedDescriptionKey: "Der ausgewählte Kalender ist schreibgeschützt."]
+                )
+            }
+
+            let remoteEvents = try await FeedParser().load(from: feedURL)
+
+            guard !remoteEvents.isEmpty else {
+                throw NSError(
+                    domain: "FootballCalendarSync",
+                    code: 4,
+                    userInfo: [NSLocalizedDescriptionKey: "Der Feed enthält 0 Termine. Aus Sicherheitsgründen wurde nichts geändert oder gelöscht."]
+                )
+            }
+
+            let result = try reconcile(remoteEvents: remoteEvents, calendar: calendar)
+            UserDefaults.standard.set(Date(), forKey: "footballCalendarLastSuccessfulSync")
+
+            status = "Fertig: \(result.created) neu, \(result.adopted) übernommen, \(result.updated) geändert, \(result.deleted) gelöscht, \(result.unchanged) unverändert."
+        } catch {
+            status = error.localizedDescription
+        }
+    }
+
+    private func reconcile(
+        remoteEvents: [RemoteCalendarEvent],
+        calendar: EKCalendar
+    ) throws -> SyncResult {
         let calendarStart = Calendar.current.date(byAdding: .year, value: -1, to: Date())!
         let calendarEnd = Calendar.current.date(byAdding: .year, value: 3, to: Date())!
+
         let predicate = eventStore.predicateForEvents(
             withStart: calendarStart,
             end: calendarEnd,
             calendars: [calendar]
         )
+
         let existingEvents = eventStore.events(matching: predicate)
 
         var existingByRemoteID: [String: EKEvent] = [:]
+        var unmarkedEvents: [EKEvent] = []
+
         for event in existingEvents {
             if let id = remoteID(from: event.notes) {
                 existingByRemoteID[id] = event
+            } else {
+                unmarkedEvents.append(event)
             }
         }
 
         var created = 0
+        var adopted = 0
         var updated = 0
         var deleted = 0
         var unchanged = 0
         let remoteIDs = Set(remoteEvents.map(\.id))
+        var adoptedEventIdentifiers = Set<String>()
 
         for remote in remoteEvents {
             if let existing = existingByRemoteID[remote.id] {
@@ -81,19 +151,36 @@ final class CalendarSyncService: ObservableObject {
                 } else {
                     unchanged += 1
                 }
-            } else {
-                let event = EKEvent(eventStore: eventStore)
-                event.calendar = calendar
-                apply(remote, to: event)
-                try eventStore.save(event, span: .thisEvent, commit: false)
-                created += 1
+                continue
             }
+
+            if let legacy = bestLegacyExternalIDMatch(
+                for: remote,
+                in: unmarkedEvents,
+                excluding: adoptedEventIdentifiers
+            ) ?? bestManualDuplicateMatch(
+                for: remote,
+                in: unmarkedEvents,
+                excluding: adoptedEventIdentifiers
+            ) {
+                adoptedEventIdentifiers.insert(legacy.eventIdentifier)
+                apply(remote, to: legacy)
+                try eventStore.save(legacy, span: .thisEvent, commit: false)
+                adopted += 1
+                continue
+            }
+
+            let event = EKEvent(eventStore: eventStore)
+            event.calendar = calendar
+            apply(remote, to: event)
+            try eventStore.save(event, span: .thisEvent, commit: false)
+            created += 1
         }
 
         for existing in existingEvents {
             guard
-                let remoteID = remoteID(from: existing.notes),
-                !remoteIDs.contains(remoteID)
+                let id = remoteID(from: existing.notes),
+                !remoteIDs.contains(id)
             else {
                 continue
             }
@@ -102,16 +189,91 @@ final class CalendarSyncService: ObservableObject {
             deleted += 1
         }
 
-        if created + updated + deleted > 0 {
+        if created + adopted + updated + deleted > 0 {
             try eventStore.commit()
         }
 
         return SyncResult(
             created: created,
+            adopted: adopted,
             updated: updated,
             deleted: deleted,
             unchanged: unchanged
         )
+    }
+
+    private func bestLegacyExternalIDMatch(
+        for remote: RemoteCalendarEvent,
+        in events: [EKEvent],
+        excluding usedIdentifiers: Set<String>
+    ) -> EKEvent? {
+        events.first { event in
+            guard !usedIdentifiers.contains(event.eventIdentifier) else {
+                return false
+            }
+
+            return event.calendarItemExternalIdentifier == remote.id
+        }
+    }
+
+    private func bestManualDuplicateMatch(
+        for remote: RemoteCalendarEvent,
+        in events: [EKEvent],
+        excluding usedIdentifiers: Set<String>
+    ) -> EKEvent? {
+        let normalizedRemoteTitle = normalize(remote.title)
+
+        let candidates = events
+            .filter { event in
+                guard !usedIdentifiers.contains(event.eventIdentifier) else {
+                    return false
+                }
+
+                guard normalize(event.title ?? "") == normalizedRemoteTitle else {
+                    return false
+                }
+
+                guard let start = event.startDate else {
+                    return false
+                }
+
+                guard Calendar.current.isDate(start, inSameDayAs: remote.start) else {
+                    return false
+                }
+
+                return abs(start.timeIntervalSince(remote.start)) <= 3 * 60 * 60
+            }
+            .sorted {
+                abs(($0.startDate ?? .distantPast).timeIntervalSince(remote.start)) <
+                abs(($1.startDate ?? .distantPast).timeIntervalSince(remote.start))
+            }
+
+        if candidates.count == 1 {
+            return candidates[0]
+        }
+
+        guard candidates.count >= 2 else {
+            return nil
+        }
+
+        let bestDelta = abs((candidates[0].startDate ?? .distantPast).timeIntervalSince(remote.start))
+        let secondDelta = abs((candidates[1].startDate ?? .distantPast).timeIntervalSince(remote.start))
+
+        if bestDelta <= 30 * 60 && secondDelta - bestDelta >= 60 * 60 {
+            return candidates[0]
+        }
+
+        return nil
+    }
+
+    private func normalize(_ value: String) -> String {
+        value
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .replacingOccurrences(of: "–", with: "-")
+            .replacingOccurrences(of: "—", with: "-")
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     @discardableResult
@@ -126,6 +288,7 @@ final class CalendarSyncService: ObservableObject {
 
         let userNotes = remote.notes?.trimmingCharacters(in: .whitespacesAndNewlines)
         let marker = "\(markerPrefix)\(remote.id)"
+
         event.notes = [userNotes, marker]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
@@ -152,31 +315,5 @@ final class CalendarSyncService: ObservableObject {
             .components(separatedBy: .newlines)
             .first(where: { $0.hasPrefix(markerPrefix) })
             .map { String($0.dropFirst(markerPrefix.count)) }
-    }
-
-    private func getOrCreateCalendar() throws -> EKCalendar {
-        if let existing = eventStore.calendars(for: .event).first(where: { $0.title == calendarName }) {
-            return existing
-        }
-
-        let calendar = EKCalendar(for: .event, eventStore: eventStore)
-        calendar.title = calendarName
-
-        if let iCloud = eventStore.sources.first(where: { $0.sourceType == .calDAV && $0.title.localizedCaseInsensitiveContains("icloud") }) {
-            calendar.source = iCloud
-        } else if let local = eventStore.sources.first(where: { $0.sourceType == .local }) {
-            calendar.source = local
-        } else if let source = eventStore.defaultCalendarForNewEvents?.source {
-            calendar.source = source
-        } else {
-            throw NSError(
-                domain: "FootballCalendarSync",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Es wurde kein beschreibbarer Kalender gefunden."]
-            )
-        }
-
-        try eventStore.saveCalendar(calendar, commit: true)
-        return calendar
     }
 }
