@@ -267,19 +267,24 @@ function isNotNominatedPage(html: string): boolean {
 
 function elementShowsNotNominated(
   $: cheerio.CheerioAPI,
-  element: cheerio.Element
+  element: any
 ): boolean {
   let current = $(element);
 
   for (let depth = 0; depth < 5 && current.length > 0; depth += 1) {
     const text = normalizeText(current.text()).toLowerCase();
+    const markup = current.toString().toLowerCase();
 
     if (
       text.length <= 600 &&
       (
         /\bnicht nominiert\b/.test(text) ||
         /\bnicht im kader\b/.test(text) ||
-        /\bkeine nominierung\b/.test(text)
+        /\bkeine nominierung\b/.test(text) ||
+        /nicht[-_ ]?nominiert/.test(markup) ||
+        /not[-_ ]?nominated/.test(markup) ||
+        /not[-_ ]?selected/.test(markup) ||
+        /nominated=["']?false/.test(markup)
       )
     ) {
       return true;
