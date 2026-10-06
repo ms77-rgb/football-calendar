@@ -304,6 +304,60 @@ function elementShowsNotNominated(
   return false;
 }
 
+function elementShowsSelfDeclined(
+  $: cheerio.CheerioAPI,
+  element: any
+): boolean {
+  let current = $(element);
+
+  for (let depth = 0; depth < 8 && current.length > 0; depth += 1) {
+    const eventLinkCount = current
+      .find('a[href*="/training/view"], a[href*="/game/view"]')
+      .length;
+
+    if (eventLinkCount > 1) {
+      return false;
+    }
+
+    const text = normalizeText(current.text()).toLowerCase();
+    const markup = current.toString().toLowerCase();
+
+    // Explicit wording from SpielerPlus detail/list variants.
+    if (
+      /\bdu hast abgesagt\b/.test(text) ||
+      /\bdu hast abgelehnt\b/.test(text) ||
+      /\bdeine antwort\s*:?\s*(absage|nein|abgelehnt)\b/.test(text) ||
+      /\bteilnahme\s*:?\s*(abgesagt|nein|abgelehnt)\b/.test(text)
+    ) {
+      return true;
+    }
+
+    // On the event cards the selected own response is rendered as the active
+    // red/negative attendance control. Require BOTH a negative-attendance
+    // signal and an explicit selected/active state so the mere count of other
+    // players who declined never hides the event.
+    const negativeSignal =
+      /thumb[^"'\s>]*(down|negative)|fa[^"'\s>]*thumbs?-down|icon[^"'\s>]*(decline|negative)|attendance[^"'\s>]*(no|negative|decline)|participation[^"'\s>]*(no|negative|decline)/.test(markup) ||
+      /data-(answer|response|status)=["']?(no|declined|negative|absent)/.test(markup);
+
+    const selectedSignal =
+      /\b(active|selected|checked|current|chosen|is-active|is-selected)\b/.test(markup) ||
+      /aria-pressed=["']true["']/.test(markup) ||
+      /aria-checked=["']true["']/.test(markup);
+
+    const redSignal =
+      /\b(btn-danger|bg-danger|text-danger|danger|negative|declined|absent)\b/.test(markup);
+
+    if (negativeSignal && selectedSignal && redSignal) {
+      return true;
+    }
+
+    current = current.parent();
+  }
+
+  return false;
+}
+
 function localTimeInZoneToUtc(
   parts: {
     year: number;
@@ -398,7 +452,10 @@ export function parseSpielerPlusEventIndexHtml(
     const href = $(element).attr("href");
     if (!href) return;
 
-    if (elementShowsNotNominated($, element)) {
+    if (
+      elementShowsNotNominated($, element) ||
+      elementShowsSelfDeclined($, element)
+    ) {
       return;
     }
 
@@ -786,7 +843,11 @@ export class SpielerPlusConnector implements CalendarConnector {
           );
         }
 
-        if (isNotNominatedPage(html)) {
+        if (
+          isNotNominatedPage(html) ||
+          /\bdu hast abgesagt\b/i.test(normalizeText(cheerio.load(html)("body").text())) ||
+          /\bdu hast abgelehnt\b/i.test(normalizeText(cheerio.load(html)("body").text()))
+        ) {
           return null;
         }
 
