@@ -265,6 +265,47 @@ function isNotNominatedPage(html: string): boolean {
   );
 }
 
+function isSelfDeclinedPage(html: string): boolean {
+  const $ = cheerio.load(html);
+  const pageText = normalizeText($("body").text()).toLowerCase();
+
+  if (
+    /\bdu hast abgesagt\b/.test(pageText) ||
+    /\bdu hast abgelehnt\b/.test(pageText) ||
+    /\bdeine antwort\s*:?\s*(absage|nein|abgelehnt)\b/.test(pageText)
+  ) {
+    return true;
+  }
+
+  // SpielerPlus renders the own attendance choice in the participation widget.
+  // According to the current markup, the third button is "Declined".
+  const declinedButton = $(".participation-widget")
+    .first()
+    .find("button")
+    .eq(2);
+
+  if (declinedButton.length === 0) {
+    return false;
+  }
+
+  const className = (declinedButton.attr("class") ?? "").toLowerCase();
+  const style = (declinedButton.attr("style") ?? "").toLowerCase();
+  const markup = declinedButton.toString().toLowerCase();
+
+  const selectedSignal =
+    /(^|\s)(active|selected|checked|current|chosen|is-active|is-selected)(\s|$)/.test(className) ||
+    /btn-danger|bg-danger|participation[^"'\s>]*(active|selected|declined|negative)/.test(className) ||
+    /aria-pressed=["']true["']/.test(markup) ||
+    /aria-checked=["']true["']/.test(markup) ||
+    /data-(selected|active|checked)=["']?(1|true|yes)/.test(markup);
+
+  const redFilledSignal =
+    /background(?:-color)?\s*:\s*(#(?:f[0-9a-f]{2,5}|e[0-9a-f]{2,5})|rgb\(\s*2[0-5]\d\s*,\s*[0-9]{1,3}\s*,\s*[0-9]{1,3}\s*\))/.test(style) ||
+    /btn-danger|bg-danger|danger|declined|negative|absent/.test(className);
+
+  return selectedSignal || redFilledSignal;
+}
+
 function elementShowsNotNominated(
   $: cheerio.CheerioAPI,
   element: any
@@ -843,11 +884,7 @@ export class SpielerPlusConnector implements CalendarConnector {
           );
         }
 
-        if (
-          isNotNominatedPage(html) ||
-          /\bdu hast abgesagt\b/i.test(normalizeText(cheerio.load(html)("body").text())) ||
-          /\bdu hast abgelehnt\b/i.test(normalizeText(cheerio.load(html)("body").text()))
-        ) {
+        if (isNotNominatedPage(html) || isSelfDeclinedPage(html)) {
           return null;
         }
 
