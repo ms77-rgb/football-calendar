@@ -265,47 +265,6 @@ function isNotNominatedPage(html: string): boolean {
   );
 }
 
-function isSelfDeclinedPage(html: string): boolean {
-  const $ = cheerio.load(html);
-  const pageText = normalizeText($("body").text()).toLowerCase();
-
-  if (
-    /\bdu hast abgesagt\b/.test(pageText) ||
-    /\bdu hast abgelehnt\b/.test(pageText) ||
-    /\bdeine antwort\s*:?\s*(absage|nein|abgelehnt)\b/.test(pageText)
-  ) {
-    return true;
-  }
-
-  // SpielerPlus renders the own attendance choice in the participation widget.
-  // According to the current markup, the third button is "Declined".
-  const declinedButton = $(".participation-widget")
-    .first()
-    .find("button")
-    .eq(2);
-
-  if (declinedButton.length === 0) {
-    return false;
-  }
-
-  const className = (declinedButton.attr("class") ?? "").toLowerCase();
-  const style = (declinedButton.attr("style") ?? "").toLowerCase();
-  const markup = declinedButton.toString().toLowerCase();
-
-  const selectedSignal =
-    /(^|\s)(active|selected|checked|current|chosen|is-active|is-selected)(\s|$)/.test(className) ||
-    /btn-danger|bg-danger|participation[^"'\s>]*(active|selected|declined|negative)/.test(className) ||
-    /aria-pressed=["']true["']/.test(markup) ||
-    /aria-checked=["']true["']/.test(markup) ||
-    /data-(selected|active|checked)=["']?(1|true|yes)/.test(markup);
-
-  const redFilledSignal =
-    /background(?:-color)?\s*:\s*(#(?:f[0-9a-f]{2,5}|e[0-9a-f]{2,5})|rgb\(\s*2[0-5]\d\s*,\s*[0-9]{1,3}\s*,\s*[0-9]{1,3}\s*\))/.test(style) ||
-    /btn-danger|bg-danger|danger|declined|negative|absent/.test(className);
-
-  return selectedSignal || redFilledSignal;
-}
-
 function elementShowsNotNominated(
   $: cheerio.CheerioAPI,
   element: any
@@ -336,60 +295,6 @@ function elementShowsNotNominated(
       /not[-_ ]?selected/.test(markup) ||
       /nominated=["']?false/.test(markup)
     ) {
-      return true;
-    }
-
-    current = current.parent();
-  }
-
-  return false;
-}
-
-function elementShowsSelfDeclined(
-  $: cheerio.CheerioAPI,
-  element: any
-): boolean {
-  let current = $(element);
-
-  for (let depth = 0; depth < 8 && current.length > 0; depth += 1) {
-    const eventLinkCount = current
-      .find('a[href*="/training/view"], a[href*="/game/view"]')
-      .length;
-
-    if (eventLinkCount > 1) {
-      return false;
-    }
-
-    const text = normalizeText(current.text()).toLowerCase();
-    const markup = current.toString().toLowerCase();
-
-    // Explicit wording from SpielerPlus detail/list variants.
-    if (
-      /\bdu hast abgesagt\b/.test(text) ||
-      /\bdu hast abgelehnt\b/.test(text) ||
-      /\bdeine antwort\s*:?\s*(absage|nein|abgelehnt)\b/.test(text) ||
-      /\bteilnahme\s*:?\s*(abgesagt|nein|abgelehnt)\b/.test(text)
-    ) {
-      return true;
-    }
-
-    // On the event cards the selected own response is rendered as the active
-    // red/negative attendance control. Require BOTH a negative-attendance
-    // signal and an explicit selected/active state so the mere count of other
-    // players who declined never hides the event.
-    const negativeSignal =
-      /thumb[^"'\s>]*(down|negative)|fa[^"'\s>]*thumbs?-down|icon[^"'\s>]*(decline|negative)|attendance[^"'\s>]*(no|negative|decline)|participation[^"'\s>]*(no|negative|decline)/.test(markup) ||
-      /data-(answer|response|status)=["']?(no|declined|negative|absent)/.test(markup);
-
-    const selectedSignal =
-      /\b(active|selected|checked|current|chosen|is-active|is-selected)\b/.test(markup) ||
-      /aria-pressed=["']true["']/.test(markup) ||
-      /aria-checked=["']true["']/.test(markup);
-
-    const redSignal =
-      /\b(btn-danger|bg-danger|text-danger|danger|negative|declined|absent)\b/.test(markup);
-
-    if (negativeSignal && selectedSignal && redSignal) {
       return true;
     }
 
@@ -493,10 +398,7 @@ export function parseSpielerPlusEventIndexHtml(
     const href = $(element).attr("href");
     if (!href) return;
 
-    if (
-      elementShowsNotNominated($, element) ||
-      elementShowsSelfDeclined($, element)
-    ) {
+    if (elementShowsNotNominated($, element)) {
       return;
     }
 
@@ -884,7 +786,7 @@ export class SpielerPlusConnector implements CalendarConnector {
           );
         }
 
-        if (isNotNominatedPage(html) || isSelfDeclinedPage(html)) {
+        if (isNotNominatedPage(html)) {
           return null;
         }
 
