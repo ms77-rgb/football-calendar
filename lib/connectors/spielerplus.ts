@@ -305,16 +305,15 @@ function elementShowsNotNominated(
     }
 
     const text = normalizeText(current.text()).toLowerCase();
-    const markup = current.toString().toLowerCase();
 
+    // Only trust visible, user-facing nomination text inside the concrete
+    // event card. Generic CSS classes or data attributes such as
+    // "not-selected" / "nominated=false" can describe controls or hidden UI
+    // state and were incorrectly filtering legitimate Leopold events.
     if (
       /\bnicht nominiert\b/.test(text) ||
       /\bnicht im kader\b/.test(text) ||
-      /\bkeine nominierung\b/.test(text) ||
-      /nicht[-_ ]?nominiert/.test(markup) ||
-      /not[-_ ]?nominated/.test(markup) ||
-      /not[-_ ]?selected/.test(markup) ||
-      /nominated=["']?false/.test(markup)
+      /\bkeine nominierung\b/.test(text)
     ) {
       return true;
     }
