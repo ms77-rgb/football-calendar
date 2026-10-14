@@ -828,13 +828,16 @@ export class SpielerPlusConnector implements CalendarConnector {
     const events: CalendarEvent[] = [];
 
     for (const userId of this.userIds) {
-      cookie = await switchSpielerPlusUser({
-        userId,
+      // Refresh the shared authenticated session BEFORE selecting the profile.
+      // Refreshing after /site/switch-user can overwrite/reset the active
+      // SpielerPlus profile, which makes every iteration read the same player.
+      cookie = await refreshSpielerPlusSession({
         cookie,
         fetchImpl: this.fetchImpl
       });
 
-      cookie = await refreshSpielerPlusSession({
+      cookie = await switchSpielerPlusUser({
+        userId,
         cookie,
         fetchImpl: this.fetchImpl
       });
