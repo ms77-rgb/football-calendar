@@ -843,17 +843,28 @@ export class SpielerPlusConnector implements CalendarConnector {
       const label = this.userLabels[userId];
 
       events.push(
-        ...userEvents.map((event) =>
-          label && event.sourceEventId.startsWith("training:")
-            ? {
-                ...event,
-                title: `${event.title} – ${label}`,
-                description: event.description
-                  ? `${event.description} · Spieler: ${label}`
-                  : `Spieler: ${label}`
-              }
-            : event
-        )
+        ...userEvents.map((event) => {
+          // The same SpielerPlus team event has the same event ID for every
+          // linked player profile. Make it profile-specific before the global
+          // normalize step, otherwise the first player's event wins and the
+          // second player's copy is silently deduplicated.
+          const sourceEventId = `${event.sourceEventId}:user:${userId}`;
+
+          return {
+            ...event,
+            id: `spielerplus:${sourceEventId}`,
+            sourceEventId,
+            title:
+              label && event.sourceEventId.startsWith("training:")
+                ? `${event.title} – ${label}`
+                : event.title,
+            description: label
+              ? event.description
+                ? `${event.description} · Spieler: ${label}`
+                : `Spieler: ${label}`
+              : event.description
+          };
+        })
       );
     }
 
