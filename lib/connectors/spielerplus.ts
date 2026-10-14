@@ -786,10 +786,11 @@ export class SpielerPlusConnector implements CalendarConnector {
           );
         }
 
-        if (isNotNominatedPage(html)) {
-          return null;
-        }
-
+        // Do not scan the whole detail page for "Nicht nominiert".
+        // The detail page can contain nomination text for other players and
+        // would incorrectly suppress every event for the selected profile.
+        // The event-list parser already scopes "Nicht nominiert" to the
+        // individual event card via elementShowsNotNominated().
         try {
           return parseSpielerPlusEventHtml(html, reference, {
             timeZone: this.timeZone,
