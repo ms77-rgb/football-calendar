@@ -119,6 +119,12 @@ function getSetCookieValues(headers: Headers): string[] {
   return combined.split(/,(?=\s*[^;,\s]+=)/g).map((value) => value.trim());
 }
 
+function getSetCookieNames(headers: Headers): string[] {
+  return getSetCookieValues(headers)
+    .map((value) => value.split(";", 1)[0]?.split("=", 1)[0]?.trim())
+    .filter((value): value is string => Boolean(value));
+}
+
 async function refreshSpielerPlusSession(options: {
   cookie: string;
   fetchImpl: typeof fetch;
@@ -178,6 +184,21 @@ async function switchSpielerPlusUser(options: {
     },
     redirect: "manual",
     cache: "no-store"
+  });
+
+  console.info("[football-calendar] SpielerPlus switch response", {
+    status: response.status,
+    locationPath: (() => {
+      const location = response.headers.get("location");
+      if (!location) return null;
+      try {
+        const parsed = new URL(location, url);
+        return parsed.pathname;
+      } catch {
+        return "invalid";
+      }
+    })(),
+    setCookieNames: getSetCookieNames(response.headers)
   });
 
   if (response.status !== 200 && (response.status < 300 || response.status >= 400)) {
@@ -715,6 +736,22 @@ export class SpielerPlusConnector implements CalendarConnector {
       throw new Error(
         "SpielerPlus-Sitzung ist nicht mehr angemeldet. Bitte Sitzung erneuern."
       );
+    }
+
+    {
+      const $debug = cheerio.load(indexHtml);
+      const allEventLinks = $debug(
+        'a[href*="/training/view"], a[href*="/game/view"]'
+      ).toArray();
+      const skippedNotNominated = allEventLinks.filter((element) =>
+        elementShowsNotNominated($debug, element)
+      ).length;
+
+      console.info("[football-calendar] SpielerPlus index diagnostics", {
+        title: normalizeText($debug("title").first().text()).slice(0, 120),
+        allEventLinks: allEventLinks.length,
+        skippedNotNominated
+      });
     }
 
     const referenceMap = new Map<string, SpielerPlusEventReference>();
