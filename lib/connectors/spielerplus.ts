@@ -845,6 +845,20 @@ export class SpielerPlusConnector implements CalendarConnector {
       const userEvents = await this.fetchEventsForCookie(cookie, context);
       const label = this.userLabels[userId];
 
+      // Safe production diagnostic: no cookie, token or numeric user ID.
+      // This lets us verify whether each configured SpielerPlus profile
+      // actually returns events after /site/switch-user.
+      console.info("[football-calendar] SpielerPlus profile fetch", {
+        label: label || "unlabeled",
+        eventCount: userEvents.length,
+        trainingCount: userEvents.filter((event) =>
+          event.sourceEventId.startsWith("training:")
+        ).length,
+        gameCount: userEvents.filter((event) =>
+          event.sourceEventId.startsWith("game:")
+        ).length
+      });
+
       events.push(
         ...userEvents.map((event) => {
           // The same SpielerPlus team event has the same event ID for every
