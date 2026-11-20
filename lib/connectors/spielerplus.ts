@@ -867,6 +867,41 @@ export class SpielerPlusConnector implements CalendarConnector {
   }
 
   async fetchEvents(context?: ConnectorContext): Promise<CalendarEvent[]> {
+    // Diagnostic only: test the stored cookie on the event list before any
+    // token refresh or profile switch. Log no credentials, URLs or page content.
+    try {
+      const diagnosticResponse = await this.fetchImpl(
+        "https://www.spielerplus.de/events/index",
+        {
+          method: "GET",
+          headers: {
+            accept: "text/html,application/xhtml+xml",
+            cookie: this.cookie,
+            "user-agent": SPIELERPLUS_BROWSER_USER_AGENT
+          },
+          redirect: "manual",
+          cache: "no-store"
+        }
+      );
+      let loginDetected: boolean | null = null;
+      let eventLinkCount: number | null = null;
+      if (diagnosticResponse.ok) {
+        const html = await diagnosticResponse.text();
+        loginDetected = isLoginPage(html);
+        const $ = cheerio.load(html);
+        eventLinkCount = $('a[href*="/training/view"], a[href*="/game/view"]').length;
+      }
+      console.info("[football-calendar] SpielerPlus direct index diagnostic", {
+        status: diagnosticResponse.status,
+        loginDetected,
+        eventLinkCount
+      });
+    } catch (error) {
+      console.warn("[football-calendar] SpielerPlus direct index diagnostic failed", {
+        errorType: error instanceof Error ? error.name : "unknown"
+      });
+    }
+
     let cookie = await refreshSpielerPlusSession({
       cookie: this.cookie,
       fetchImpl: this.fetchImpl
