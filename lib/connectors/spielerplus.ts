@@ -192,6 +192,9 @@ async function switchSpielerPlusUser(options: {
       accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       cookie: options.cookie,
       referer: "https://www.spielerplus.de/events/index",
+      "sec-fetch-site": "same-origin",
+      "sec-fetch-mode": "navigate",
+      "sec-fetch-dest": "document",
       "user-agent": SPIELERPLUS_BROWSER_USER_AGENT
     },
     redirect: "manual",
