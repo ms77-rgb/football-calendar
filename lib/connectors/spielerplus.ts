@@ -9,6 +9,9 @@ const ALLOWED_SPIELERPLUS_HOSTS = new Set([
 ]);
 
 const DEFAULT_TIME_ZONE = "Europe/Berlin";
+// Standard desktop browser headers for the SpielerPlus web interface.
+const SPIELERPLUS_BROWSER_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 const DEFAULT_TRAINING_DURATION_MINUTES = 90;
 const DEFAULT_GAME_DURATION_MINUTES = 120;
 
@@ -139,7 +142,7 @@ async function refreshSpielerPlusSession(options: {
       accept: "application/json, text/plain, */*",
       cookie: options.cookie,
       "user-agent":
-        "football-calendar/0.1 SpielerPlus connector (+https://github.com/ms77-rgb/football-calendar)"
+        SPIELERPLUS_BROWSER_USER_AGENT
     },
     redirect: "manual",
     cache: "no-store"
@@ -186,10 +189,10 @@ async function switchSpielerPlusUser(options: {
   const response = await options.fetchImpl(url.toString(), {
     method: "GET",
     headers: {
-      accept: "text/html,application/xhtml+xml",
+      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       cookie: options.cookie,
-      "user-agent":
-        "football-calendar/0.1 SpielerPlus connector (+https://github.com/ms77-rgb/football-calendar)"
+      referer: "https://www.spielerplus.de/events/index",
+      "user-agent": SPIELERPLUS_BROWSER_USER_AGENT
     },
     redirect: "manual",
     cache: "no-store"
@@ -245,7 +248,7 @@ async function fetchWithSafeRedirects(
         accept: "text/html,application/xhtml+xml",
         cookie,
         "user-agent":
-          "football-calendar/0.1 SpielerPlus connector (+https://github.com/ms77-rgb/football-calendar)"
+          SPIELERPLUS_BROWSER_USER_AGENT
       },
       redirect: "manual",
       cache: "no-store"
@@ -482,7 +485,7 @@ async function fetchSpielerPlusAjaxEventsPage(options: {
       "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
       cookie: options.cookie,
       "user-agent":
-        "football-calendar/0.1 SpielerPlus connector (+https://github.com/ms77-rgb/football-calendar)",
+        SPIELERPLUS_BROWSER_USER_AGENT,
       "x-requested-with": "XMLHttpRequest"
     },
     body: new URLSearchParams({
