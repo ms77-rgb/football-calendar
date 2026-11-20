@@ -867,6 +867,33 @@ export class SpielerPlusConnector implements CalendarConnector {
   }
 
   async fetchEvents(context?: ConnectorContext): Promise<CalendarEvent[]> {
+    // Public access diagnostic: compare unauthenticated homepage and event-list
+    // responses. Log only status codes, never bodies, cookies or URLs.
+    try {
+      const publicChecks = await Promise.all(
+        ["/", "/events/index"].map(async (path) => {
+          const response = await this.fetchImpl(
+            `https://www.spielerplus.de${path}`,
+            {
+              method: "GET",
+              headers: {
+                accept: "text/html,application/xhtml+xml",
+                "user-agent": SPIELERPLUS_BROWSER_USER_AGENT
+              },
+              redirect: "manual",
+              cache: "no-store"
+            }
+          );
+          return { path: path === "/" ? "homepage" : "event-list", status: response.status };
+        })
+      );
+      console.info("[football-calendar] SpielerPlus public access diagnostic", publicChecks);
+    } catch (error) {
+      console.warn("[football-calendar] SpielerPlus public access diagnostic failed", {
+        errorType: error instanceof Error ? error.name : "unknown"
+      });
+    }
+
     // Diagnostic only: test the stored cookie on the event list before any
     // token refresh or profile switch. Log no credentials, URLs or page content.
     try {
