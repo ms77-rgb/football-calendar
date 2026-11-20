@@ -145,6 +145,15 @@ async function refreshSpielerPlusSession(options: {
     cache: "no-store"
   });
 
+  if (response.status === 403) {
+    // Some valid browser sessions can fetch /events/index and /events/ajaxgetevents
+    // even when the optional refresh endpoint rejects the request. Keep the
+    // supplied cookie and let the subsequent authenticated event-list request
+    // verify the session. That request rejects login pages and HTTP errors.
+    console.warn("[football-calendar] SpielerPlus refresh forbidden; trying existing session cookie");
+    return options.cookie;
+  }
+
   if (!response.ok) {
     throw new Error(
       `SpielerPlus Token-Refresh lieferte HTTP ${response.status}.`
