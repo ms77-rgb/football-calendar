@@ -1,7 +1,7 @@
 import { buildIcsCalendar } from "@/lib/calendar/ics";
 import { normalizeEvents, preferFussballDeDuplicateMatches } from "@/lib/calendar/normalize";
 import { FussballDeConnector, extractFussballDeTeamId } from "@/lib/connectors/fussball-de";
-import { SpielerPlusConnector } from "@/lib/connectors/spielerplus";
+import { readSyncedSpielerPlusEvents } from "@/lib/calendar/synced-spielerplus";
 
 type TeamSelection = {
   reference: string;
@@ -37,34 +37,12 @@ export async function GET(
   context: { params: Promise<{ token: string }> }
 ) {
   const configuredToken = process.env.CALENDAR_FEED_TOKEN;
-  const spielerPlusCookie = process.env.SPIELERPLUS_COOKIE;
-  const spielerPlusUserIds = (process.env.SPIELERPLUS_USER_IDS ?? "")
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  const spielerPlusUserLabels = Object.fromEntries(
-    (process.env.SPIELERPLUS_USER_LABELS ?? "")
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean)
-      .map((entry) => {
-        const separator = entry.indexOf(":");
-        if (separator <= 0) return ["", ""] as const;
-        return [
-          entry.slice(0, separator).trim(),
-          entry.slice(separator + 1).trim()
-        ] as const;
-      })
-      .filter(([userId, label]) => Boolean(userId) && Boolean(label))
-  );
-
-  if (!configuredToken || !spielerPlusCookie) {
+  if (!configuredToken) {
     return Response.json(
       {
         error: "Private calendar feed is not configured on the server.",
         missing: [
-          !configuredToken ? "CALENDAR_FEED_TOKEN" : null,
-          !spielerPlusCookie ? "SPIELERPLUS_COOKIE" : null
+          !configuredToken ? "CALENDAR_FEED_TOKEN" : null
         ].filter(Boolean)
       },
       {
@@ -113,12 +91,7 @@ export async function GET(
       )
     );
 
-    const spielerPlusPromise = new SpielerPlusConnector({
-      cookieHeader: spielerPlusCookie,
-      userIds: spielerPlusUserIds,
-      userLabels: spielerPlusUserLabels,
-      maxEvents: 50
-    }).fetchEvents();
+    const spielerPlusPromise = readSyncedSpielerPlusEvents();
 
     const [fussballDeGroups, spielerPlusEvents] = await Promise.all([
       fussballDePromise,
@@ -128,7 +101,7 @@ export async function GET(
     const fussballDeEvents = fussballDeGroups.flat();
     const normalizedEvents = normalizeEvents([
       ...fussballDeEvents,
-      ...spielerPlusEvents
+      ...(spielerPlusEvents ?? [])
     ]);
     const events = preferFussballDeDuplicateMatches(normalizedEvents);
     const suppressedSpielerPlusDuplicates =
@@ -138,17 +111,16 @@ export async function GET(
       return Response.json(
         {
           fussballDeCount: fussballDeEvents.length,
-          spielerPlusCount: spielerPlusEvents.length,
+          spielerPlusCount: spielerPlusEvents?.length ?? 0,
           totalCount: events.length,
           suppressedSpielerPlusDuplicates,
-          spielerPlusConfiguredUsers: spielerPlusUserIds.length,
-          spielerPlusConfiguredLabels: Object.values(spielerPlusUserLabels),
-          spielerPlusSamplesFirst: spielerPlusEvents.slice(0, 10).map((event) => ({
+          spielerPlusSyncStatus: spielerPlusEvents === null ? "not-yet-synced" : "available",
+          spielerPlusSamplesFirst: (spielerPlusEvents ?? []).slice(0, 10).map((event) => ({
             id: event.sourceEventId,
             title: event.title,
             startsAt: event.startsAt.toISOString()
           })),
-          spielerPlusSamplesLast: spielerPlusEvents.slice(-10).map((event) => ({
+          spielerPlusSamplesLast: (spielerPlusEvents ?? []).slice(-10).map((event) => ({
             id: event.sourceEventId,
             title: event.title,
             startsAt: event.startsAt.toISOString()
